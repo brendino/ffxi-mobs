@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFXI Mob Spawn Viewer</title>
+    <script src="map_data.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { margin-top: 0; margin-bottom: 15px; }
+        .controls {
+            background-color: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            gap: 25px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            max-width: 95vw;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .checkbox-list {
+            background: #1e1e1e;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 8px;
+            max-height: 160px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 220px;
+        }
+        .checkbox-list label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            user-select: none;
+        }
+        select, button, input[type="text"] {
+            padding: 6px 10px;
+            font-size: 14px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #444;
+        }
+        button:active {
+            background-color: #555;
+        }
+        
+        /* Map Tabs */
+        .tab-bar {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            max-width: 100%;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+        }
+        .tab-pill {
+            background: #2d2d2d;
+            border: 1px solid #555;
+            border-radius: 6px 6px 0 0;
+            padding: 6px 14px;
+            font-size: 14px;
+            color: #bbb;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s;
+        }
+        .tab-pill:hover {
+            background: #3d3d3d;
+            color: #fff;
+        }
+        .tab-pill.active {
+            background: #444;
+            color: #fff;
+            border-color: #57a1f8;
+            border-bottom-color: #444;
+            font-weight: bold;
+        }
+        .tab-close {
+            color: #888;
+            font-weight: bold;
+            border-radius: 50%;
+            padding: 0 4px;
+            font-size: 12px;
+            line-height: 1;
+        }
+        .tab-close:hover {
+            color: #ff4444;
+            background: rgba(255,255,255,0.15);
+        }
+
+        .map-container {
+            position: relative;
+            display: inline-block;
+            border: 2px solid #444;
+            border-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            background-color: #000;
+        }
+        #mapImage {
+            display: block;
+        }
+        #spawnCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        #tooltip {
+            position: absolute;
+            background-color: rgba(20, 20, 20, 0.95);
+            color: #fff;
+            padding: 10px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            white-space: nowrap;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        #tooltip.frozen .tooltip-close {
+            display: block !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>FFXI Mob Spawn Viewer</h1>
+    
+    <div class="controls">
+        <!-- Zone Filter Panel -->
+        <div class="filter-group" style="min-width: 250px;">
+            <label style="font-weight: bold;">Select Zones:</label>
+            <div style="position: relative; display: block; margin-bottom: 2px;">
+                <input type="text" id="zoneSearch" placeholder="Search zones..." style="padding-right: 24px; width: 100%; box-sizing: border-box;">
+                <span id="clearZoneSearchBtn" style="position: absolute; right: 8px; top: 5px; cursor: pointer; color: #888; display: none; font-size: 14px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'">&#10006;</span>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button id="openMatchingTabsBtn" type="button" style="font-size: 12px; padding: 4px 8px; flex: 1;">Open Matching Tabs</button>
+                <button id="closeAllTabsBtn" type="button" style="font-size: 12px; padding: 4px 8px;">Close All</button>
+            </div>
+            <div id="zoneFilterContainer" class="checkbox-list">
+                <!-- Zone checkboxes injected here -->
+            </div>
+        </div>
+
+        <!-- Mob/Drop Filter Panel -->
+        <div class="filter-group" style="min-width: 250px;">
+            <label style="font-weight: bold;">Filter Mobs & Drops:</label>
+            <div style="position: relative; display: block; margin-bottom: 2px;">
+                <input type="text" id="mobSearch" placeholder="Search mobs or drops..." style="padding-right: 24px; width: 100%; box-sizing: border-box;">
+                <span id="clearSearchBtn" style="position: absolute; right: 8px; top: 5px; cursor: pointer; color: #888; display: none; font-size: 14px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'">&#10006;</span>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button id="selectAllBtn" type="button" style="font-size: 12px; padding: 4px 8px; flex: 1;">Select All</button>
+                <button id="selectNoneBtn" type="button" style="font-size: 12px; padding: 4px 8px; flex: 1;">Select None</button>
+            </div>
+            <div id="mobFilterContainer" class="checkbox-list">
+                <!-- Checkboxes injected here -->
+            </div>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; gap: 8px; align-self: center;">
+            <span id="stats" style="font-size: 14px; font-weight: 500;"></span>
+        </div>
+    </div>
+
+    <!-- Map Tabs & Viewing Area -->
+    <div style="display: flex; flex-direction: column; max-width: 95vw;">
+        <div id="mapTabHeader" style="display: flex; align-items: center; width: 100%; margin-bottom: 8px;">
+            <div id="mapTabBar" class="tab-bar" style="flex: 1; min-width: 0; margin-bottom: 0;">
+                <!-- Map tabs rendered here -->
+            </div>
+            <div id="closeAllTabBarPill" class="tab-pill" style="display: none; flex-shrink: 0; background: #4a1515; border-color: #993333; color: #ff9999; margin-left: 10px; font-weight: bold; font-size: 13px; padding: 6px 12px; height: fit-content;" title="Close all open map tabs">
+                Close All &#10006;
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 20px; align-items: flex-start;">
+            <div style="display: flex; flex-direction: column; align-items: center; background: #2d2d2d; padding: 10px; border-radius: 8px; border: 1px solid #555; height: 250px; width: 50px; box-sizing: border-box;">
+                <span style="font-weight: bold; font-size: 20px; line-height: 1;">+</span>
+                <div style="position: relative; flex-grow: 1; width: 100%;">
+                    <input type="range" id="zoomSlider" min="1" max="5" step="0.25" value="1" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(270deg); width: 180px; cursor: pointer; margin: 0;">
+                </div>
+                <span style="font-weight: bold; font-size: 24px; line-height: 1;">-</span>
+            </div>
+            
+            <div id="scrollContainer" style="overflow: hidden; border: 2px solid #444; background-color: #000; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); cursor: grab; position: relative; user-select: none; -webkit-user-select: none; max-height: 75vh;">
+                <div class="map-container" id="mapContainer" style="border: none; box-shadow: none;">
+                    <img id="mapImage" src="" alt="Select a zone to view map" draggable="false" style="display: block; transform-origin: top left;">
+                    <canvas id="spawnCanvas"></canvas>
+                </div>
+            </div>
+            
+            <div id="legendContainer" style="background: #2d2d2d; border-radius: 8px; padding: 15px; border: 1px solid #555; width: 250px; max-height: 75vh; overflow-y: auto; display: flex; flex-direction: column;">
+                <h3 style="margin-top: 0; margin-bottom: 10px; border-bottom: 1px solid #555; padding-bottom: 5px;">Map Legend</h3>
+                <div id="legendItems" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tooltip" class="tooltip"></div>
+
+    <script>
+        const mapData = window.MapData;
+        const zonesData = [{"areaId":"32_0","hexZoneId":"32","name":"Aht Urhgan Whitegate"},{"areaId":"e0_0","hexZoneId":"e0","name":"Airship - Jeuno-Bastok"},{"areaId":"e2_0","hexZoneId":"e2","name":"Airship - Jeuno-Kazham"},{"areaId":"df_0","hexZoneId":"df","name":"Airship - Jeuno-SandOria"},{"areaId":"e1_0","hexZoneId":"e1","name":"Airship - Jeuno-Windurst"},{"areaId":"d6_0","hexZoneId":"d6","name":"Al Zhabi Residential Area"},{"areaId":"30_0","hexZoneId":"30","name":"Al Zhabi"},{"areaId":"21_0","hexZoneId":"21","name":"Al'Taieu"},{"areaId":"98_0","hexZoneId":"98","name":"Altar Room"},{"areaId":"48_0","hexZoneId":"48","name":"Alzadaal Undersea Ruins 1"},{"areaId":"48_9","hexZoneId":"48","name":"Alzadaal Undersea Ruins 10"},{"areaId":"48_10","hexZoneId":"48","name":"Alzadaal Undersea Ruins 11"},{"areaId":"48_11","hexZoneId":"48","name":"Alzadaal Undersea Ruins 12"},{"areaId":"48_1","hexZoneId":"48","name":"Alzadaal Undersea Ruins 2"},{"areaId":"48_2","hexZoneId":"48","name":"Alzadaal Undersea Ruins 3"},{"areaId":"48_3","hexZoneId":"48","name":"Alzadaal Undersea Ruins 4"},{"areaId":"48_4","hexZoneId":"48","name":"Alzadaal Undersea Ruins 5"},{"areaId":"48_5","hexZoneId":"48","name":"Alzadaal Undersea Ruins 6"},{"areaId":"48_6","hexZoneId":"48","name":"Alzadaal Undersea Ruins 7"},{"areaId":"48_7","hexZoneId":"48","name":"Alzadaal Undersea Ruins 8"},{"areaId":"48_8","hexZoneId":"48","name":"Alzadaal Undersea Ruins 9"},{"areaId":"26_6","hexZoneId":"26","name":"Apollyon-CN"},{"areaId":"26_7","hexZoneId":"26","name":"Apollyon-CS"},{"areaId":"26_0","hexZoneId":"26","name":"Apollyon-Entrance-SE"},{"areaId":"26_1","hexZoneId":"26","name":"Apollyon-Entrance-SW"},{"areaId":"26_2","hexZoneId":"26","name":"Apollyon-NE"},{"areaId":"26_3","hexZoneId":"26","name":"Apollyon-NW"},{"areaId":"26_4","hexZoneId":"26","name":"Apollyon-SE"},{"areaId":"26_5","hexZoneId":"26","name":"Apollyon-SW"},{"areaId":"36_0","hexZoneId":"36","name":"Arrapago Reef 1"},{"areaId":"36_9","hexZoneId":"36","name":"Arrapago Reef 10"},{"areaId":"36_10","hexZoneId":"36","name":"Arrapago Reef 11"},{"areaId":"36_1","hexZoneId":"36","name":"Arrapago Reef 2"},{"areaId":"36_2","hexZoneId":"36","name":"Arrapago Reef 3"},{"areaId":"36_3","hexZoneId":"36","name":"Arrapago Reef 4"},{"areaId":"36_4","hexZoneId":"36","name":"Arrapago Reef 5"},{"areaId":"36_5","hexZoneId":"36","name":"Arrapago Reef 6"},{"areaId":"36_6","hexZoneId":"36","name":"Arrapago Reef 7"},{"areaId":"36_7","hexZoneId":"36","name":"Arrapago Reef 8"},{"areaId":"36_8","hexZoneId":"36","name":"Arrapago Reef 9"},{"areaId":"4a_0","hexZoneId":"4a","name":"Arrapago Remnants 1"},{"areaId":"4a_1","hexZoneId":"4a","name":"Arrapago Remnants 2"},{"areaId":"4a_2","hexZoneId":"4a","name":"Arrapago Remnants 3"},{"areaId":"4a_3","hexZoneId":"4a","name":"Arrapago Remnants 4"},{"areaId":"4a_4","hexZoneId":"4a","name":"Arrapago Remnants 5"},{"areaId":"4a_5","hexZoneId":"4a","name":"Arrapago Remnants 6"},{"areaId":"4a_6","hexZoneId":"4a","name":"Arrapago Remnants 7"},{"areaId":"07_0","hexZoneId":"07","name":"Attohwa Chasm"},{"areaId":"44_0","hexZoneId":"44","name":"Aydeewa Subterrane 1"},{"areaId":"44_1","hexZoneId":"44","name":"Aydeewa Subterrane 2"},{"areaId":"44_2","hexZoneId":"44","name":"Aydeewa Subterrane 3"},{"areaId":"44_3","hexZoneId":"44","name":"Aydeewa Subterrane 4"},{"areaId":"44_4","hexZoneId":"44","name":"Aydeewa Subterrane 5"},{"areaId":"44_5","hexZoneId":"44","name":"Aydeewa Subterrane 6"},{"areaId":"44_6","hexZoneId":"44","name":"Aydeewa Subterrane 7"},{"areaId":"92_0","hexZoneId":"92","name":"Balga's Dais"},{"areaId":"57_0","hexZoneId":"57","name":"Bastok Markets [S]"},{"areaId":"eb_0","hexZoneId":"eb","name":"Bastok Markets"},{"areaId":"ea_0","hexZoneId":"ea","name":"Bastok Mines"},{"areaId":"d9_0","hexZoneId":"d9","name":"Bastok Residential Area"},{"areaId":"54_0","hexZoneId":"54","name":"Batallia Downs [S]"},{"areaId":"69_0","hexZoneId":"69","name":"Batallia Downs"},{"areaId":"5c_0","hexZoneId":"5c","name":"Beadeaux 1 [S]"},{"areaId":"93_0","hexZoneId":"93","name":"Beadeaux 1"},{"areaId":"5c_1","hexZoneId":"5c","name":"Beadeaux 2 [S]"},{"areaId":"93_1","hexZoneId":"93","name":"Beadeaux 2"},{"areaId":"88_0","hexZoneId":"88","name":"Beaucedine Glacier [S]"},{"areaId":"6f_0","hexZoneId":"6f","name":"Beaucedine Glacier"},{"areaId":"7f_0","hexZoneId":"7f","name":"Behemoth's Dominion"},{"areaId":"4b_0","hexZoneId":"4b","name":"Bhaflau Remnants 1"},{"areaId":"4b_1","hexZoneId":"4b","name":"Bhaflau Remnants 2"},{"areaId":"4b_2","hexZoneId":"4b","name":"Bhaflau Remnants 3"},{"areaId":"4b_3","hexZoneId":"4b","name":"Bhaflau Remnants 4"},{"areaId":"4b_4","hexZoneId":"4b","name":"Bhaflau Remnants 5"},{"areaId":"34_0","hexZoneId":"34","name":"Bhaflau Thickets 1"},{"areaId":"34_1","hexZoneId":"34","name":"Bhaflau Thickets 2"},{"areaId":"04_0","hexZoneId":"04","name":"Bibiki Bay"},{"areaId":"08_0","hexZoneId":"08","name":"Boneyard Gully"},{"areaId":"a7_0","hexZoneId":"a7","name":"Bostaunieux Oubliette 1"},{"areaId":"a7_1","hexZoneId":"a7","name":"Bostaunieux Oubliette 2"},{"areaId":"a7_2","hexZoneId":"a7","name":"Bostaunieux Oubliette 3"},{"areaId":"76_0","hexZoneId":"76","name":"Buburimu Peninsula"},{"areaId":"4f_0","hexZoneId":"4f","name":"Caedarva Mire 1"},{"areaId":"4f_1","hexZoneId":"4f","name":"Caedarva Mire 2"},{"areaId":"4f_2","hexZoneId":"4f","name":"Caedarva Mire 3"},{"areaId":"4f_3","hexZoneId":"4f","name":"Caedarva Mire 4"},{"areaId":"71_0","hexZoneId":"71","name":"Cape Teriggan"},{"areaId":"02_0","hexZoneId":"02","name":"Carpenters' Landing 1"},{"areaId":"02_1","hexZoneId":"02","name":"Carpenters' Landing 2"},{"areaId":"63_0","hexZoneId":"63","name":"Castle Oztroja 1 [S]"},{"areaId":"97_0","hexZoneId":"97","name":"Castle Oztroja 1"},{"areaId":"63_1","hexZoneId":"63","name":"Castle Oztroja 2 [S]"},{"areaId":"97_1","hexZoneId":"97","name":"Castle Oztroja 2"},{"areaId":"63_2","hexZoneId":"63","name":"Castle Oztroja 3 [S]"},{"areaId":"97_2","hexZoneId":"97","name":"Castle Oztroja 3"},{"areaId":"63_3","hexZoneId":"63","name":"Castle Oztroja 4 [S]"},{"areaId":"97_3","hexZoneId":"97","name":"Castle Oztroja 4"},{"areaId":"63_4","hexZoneId":"63","name":"Castle Oztroja 5 [S]"},{"areaId":"97_4","hexZoneId":"97","name":"Castle Oztroja 5"},{"areaId":"63_5","hexZoneId":"63","name":"Castle Oztroja 6 [S]"},{"areaId":"97_5","hexZoneId":"97","name":"Castle Oztroja 6"},{"areaId":"97_6","hexZoneId":"97","name":"Castle Oztroja 7"},{"areaId":"8a_0","hexZoneId":"8a","name":"Castle Zvahl Baileys 1 [S]"},{"areaId":"a1_0","hexZoneId":"a1","name":"Castle Zvahl Baileys 1"},{"areaId":"8a_1","hexZoneId":"8a","name":"Castle Zvahl Baileys 2 [S]"},{"areaId":"a1_1","hexZoneId":"a1","name":"Castle Zvahl Baileys 2"},{"areaId":"8a_2","hexZoneId":"8a","name":"Castle Zvahl Baileys 3 [S]"},{"areaId":"a1_2","hexZoneId":"a1","name":"Castle Zvahl Baileys 3"},{"areaId":"8a_3","hexZoneId":"8a","name":"Castle Zvahl Baileys 4 [S]"},{"areaId":"a1_3","hexZoneId":"a1","name":"Castle Zvahl Baileys 4"},{"areaId":"9b_0","hexZoneId":"9b","name":"Castle Zvahl Keep 1 [S]"},{"areaId":"a2_0","hexZoneId":"a2","name":"Castle Zvahl Keep 1"},{"areaId":"9b_1","hexZoneId":"9b","name":"Castle Zvahl Keep 2 [S]"},{"areaId":"a2_1","hexZoneId":"a2","name":"Castle Zvahl Keep 2"},{"areaId":"9b_2","hexZoneId":"9b","name":"Castle Zvahl Keep 3 [S]"},{"areaId":"a2_2","hexZoneId":"a2","name":"Castle Zvahl Keep 3"},{"areaId":"9b_3","hexZoneId":"9b","name":"Castle Zvahl Keep 4 [S]"},{"areaId":"a2_3","hexZoneId":"a2","name":"Castle Zvahl Keep 4"},{"areaId":"a8_0","hexZoneId":"a8","name":"Chamber of Oracles"},{"areaId":"e9_0","hexZoneId":"e9","name":"Chateau d'Oraguille"},{"areaId":"46_0","hexZoneId":"46","name":"Chocobo Circuit 1"},{"areaId":"46_1","hexZoneId":"46","name":"Chocobo Circuit 2"},{"areaId":"46_2","hexZoneId":"46","name":"Chocobo Circuit 3"},{"areaId":"46_3","hexZoneId":"46","name":"Chocobo Circuit 4"},{"areaId":"46_4","hexZoneId":"46","name":"Chocobo Circuit 5"},{"areaId":"46_5","hexZoneId":"46","name":"Chocobo Circuit 6"},{"areaId":"46_6","hexZoneId":"46","name":"Chocobo Circuit 7"},{"areaId":"cf_0","hexZoneId":"cf","name":"Cloister of Flames"},{"areaId":"cb_0","hexZoneId":"cb","name":"Cloister of Frost"},{"areaId":"c9_0","hexZoneId":"c9","name":"Cloister of Gales"},{"areaId":"ca_0","hexZoneId":"ca","name":"Cloister of Storms"},{"areaId":"d3_0","hexZoneId":"d3","name":"Cloister of Tides"},{"areaId":"d1_0","hexZoneId":"d1","name":"Cloister of Tremors"},{"areaId":"ab_0","hexZoneId":"ab","name":"Crawlers Nest 1 [S]"},{"areaId":"c5_0","hexZoneId":"c5","name":"Crawlers' Nest 1"},{"areaId":"ab_1","hexZoneId":"ab","name":"Crawlers Nest 2 [S]"},{"areaId":"c5_1","hexZoneId":"c5","name":"Crawlers' Nest 2"},{"areaId":"c5_2","hexZoneId":"c5","name":"Crawlers' Nest 3"},{"areaId":"c5_3","hexZoneId":"c5","name":"Crawlers' Nest Unknown"},{"areaId":"bf_0","hexZoneId":"bf","name":"Dangruf Wadi a"},{"areaId":"bf_1","hexZoneId":"bf","name":"Dangruf Wadi b"},{"areaId":"55_0","hexZoneId":"55","name":"Davoi [S]"},{"areaId":"95_0","hexZoneId":"95","name":"Davoi"},{"areaId":"b8_3","hexZoneId":"b8","name":"Delkfutt's Tower 0"},{"areaId":"b8_0","hexZoneId":"b8","name":"Delkfutt's Tower 1"},{"areaId":"9e_0","hexZoneId":"9e","name":"Delkfutt's Tower 10"},{"areaId":"9e_1","hexZoneId":"9e","name":"Delkfutt's Tower 11"},{"areaId":"9e_2","hexZoneId":"9e","name":"Delkfutt's Tower 12"},{"areaId":"9e_3","hexZoneId":"9e","name":"Delkfutt's Tower 13"},{"areaId":"9e_4","hexZoneId":"9e","name":"Delkfutt's Tower 14"},{"areaId":"9e_5","hexZoneId":"9e","name":"Delkfutt's Tower 15"},{"areaId":"b8_1","hexZoneId":"b8","name":"Delkfutt's Tower 2"},{"areaId":"b8_2","hexZoneId":"b8","name":"Delkfutt's Tower 3"},{"areaId":"9d_0","hexZoneId":"9d","name":"Delkfutt's Tower 4"},{"areaId":"9d_1","hexZoneId":"9d","name":"Delkfutt's Tower 5"},{"areaId":"9d_2","hexZoneId":"9d","name":"Delkfutt's Tower 6"},{"areaId":"9d_3","hexZoneId":"9d","name":"Delkfutt's Tower 7"},{"areaId":"9d_4","hexZoneId":"9d","name":"Delkfutt's Tower 8"},{"areaId":"9d_5","hexZoneId":"9d","name":"Delkfutt's Tower 9"},{"areaId":"a0_0","hexZoneId":"a0","name":"Den of Rancor 1"},{"areaId":"a0_1","hexZoneId":"a0","name":"Den of Rancor 2"},{"areaId":"a0_2","hexZoneId":"a0","name":"Den of Rancor 3"},{"areaId":"a0_3","hexZoneId":"a0","name":"Den of Rancor 4"},{"areaId":"a0_4","hexZoneId":"a0","name":"Den of Rancor 5"},{"areaId":"a0_5","hexZoneId":"a0","name":"Den of Rancor 6"},{"areaId":"a0_6","hexZoneId":"a0","name":"Den of Rancor 7"},{"areaId":"a0_7","hexZoneId":"a0","name":"Den of Rancor 8"},{"areaId":"a0_8","hexZoneId":"a0","name":"Den of Rancor 9"},{"areaId":"2b_0","hexZoneId":"2b","name":"Diorama Abdhaljs-Ghelsba"},{"areaId":"2c_0","hexZoneId":"2c","name":"Diorama Abdhaljs-Purgonorgo Isle"},{"areaId":"9a_0","hexZoneId":"9a","name":"Dragon's Aery"},{"areaId":"ba_0","hexZoneId":"ba","name":"Dynamis - Bastok"},{"areaId":"86_0","hexZoneId":"86","name":"Dynamis - Beaucedine"},{"areaId":"28_0","hexZoneId":"28","name":"Dynamis - Buburimu"},{"areaId":"bc_0","hexZoneId":"bc","name":"Dynamis - Jeuno"},{"areaId":"29_0","hexZoneId":"29","name":"Dynamis - Qufim"},{"areaId":"b9_0","hexZoneId":"b9","name":"Dynamis - San d'Oria"},{"areaId":"2a_0","hexZoneId":"2a","name":"Dynamis - Tavnazia 1"},{"areaId":"2a_1","hexZoneId":"2a","name":"Dynamis - Tavnazia 2"},{"areaId":"2a_2","hexZoneId":"2a","name":"Dynamis - Tavnazia 3"},{"areaId":"27_0","hexZoneId":"27","name":"Dynamis - Valkurm"},{"areaId":"bb_0","hexZoneId":"bb","name":"Dynamis - Windurst"},{"areaId":"87_0","hexZoneId":"87","name":"Dynamis - Xarcabard"},{"areaId":"51_0","hexZoneId":"51","name":"East Ronfaure [S]"},{"areaId":"65_0","hexZoneId":"65","name":"East Ronfaure"},{"areaId":"74_0","hexZoneId":"74","name":"East Sarutabaruta"},{"areaId":"72_0","hexZoneId":"72","name":"Eastern Altepa Desert"},{"areaId":"af_0","hexZoneId":"af","name":"Eldieme Necropolis 1 [S]"},{"areaId":"af_1","hexZoneId":"af","name":"Eldieme Necropolis 2 [S]"},{"areaId":"af_2","hexZoneId":"af","name":"Eldieme Necropolis 3 [S]"},{"areaId":"24_0","hexZoneId":"24","name":"Empyreal Paradox"},{"areaId":"56_0","hexZoneId":"56","name":"Everbloom Hollow 1"},{"areaId":"56_9","hexZoneId":"56","name":"Everbloom Hollow 10"},{"areaId":"56_10","hexZoneId":"56","name":"Everbloom Hollow 11"},{"areaId":"56_11","hexZoneId":"56","name":"Everbloom Hollow 12"},{"areaId":"56_12","hexZoneId":"56","name":"Everbloom Hollow 13"},{"areaId":"56_13","hexZoneId":"56","name":"Everbloom Hollow 14"},{"areaId":"56_14","hexZoneId":"56","name":"Everbloom Hollow 15"},{"areaId":"56_15","hexZoneId":"56","name":"Everbloom Hollow 16"},{"areaId":"56_16","hexZoneId":"56","name":"Everbloom Hollow 17"},{"areaId":"56_17","hexZoneId":"56","name":"Everbloom Hollow 18"},{"areaId":"56_1","hexZoneId":"56","name":"Everbloom Hollow 2"},{"areaId":"56_2","hexZoneId":"56","name":"Everbloom Hollow 3"},{"areaId":"56_3","hexZoneId":"56","name":"Everbloom Hollow 4"},{"areaId":"56_4","hexZoneId":"56","name":"Everbloom Hollow 5"},{"areaId":"56_5","hexZoneId":"56","name":"Everbloom Hollow 6"},{"areaId":"56_6","hexZoneId":"56","name":"Everbloom Hollow 7"},{"areaId":"56_7","hexZoneId":"56","name":"Everbloom Hollow 8"},{"areaId":"56_8","hexZoneId":"56","name":"Everbloom Hollow 9"},{"areaId":"cc_0","hexZoneId":"cc","name":"Fei'Yin 1"},{"areaId":"cc_1","hexZoneId":"cc","name":"Fei'Yin 2"},{"areaId":"2e_0","hexZoneId":"2e","name":"Ferry - Mhaura-AlZahbi 1"},{"areaId":"2f_0","hexZoneId":"2f","name":"Ferry - Mhaura-AlZahbi 2"},{"areaId":"3a_0","hexZoneId":"3a","name":"Ferry - Nashmau-AlZahbi 1"},{"areaId":"3b_0","hexZoneId":"3b","name":"Ferry - Nashmau-AlZahbi 2"},{"areaId":"dc_0","hexZoneId":"dc","name":"Ferry - Selbina-Mhaura 1"},{"areaId":"e3_0","hexZoneId":"e3","name":"Ferry - Selbina-Mhaura 2"},{"areaId":"dd_0","hexZoneId":"dd","name":"Ferry - Selbina-Mhaura 3"},{"areaId":"e4_0","hexZoneId":"e4","name":"Ferry - Selbina-Mhaura 4"},{"areaId":"8d_0","hexZoneId":"8d","name":"Fort Ghelsba"},{"areaId":"60_0","hexZoneId":"60","name":"Fort Karugo-Narugo 1"},{"areaId":"60_1","hexZoneId":"60","name":"Fort Karugo-Narugo 2"},{"areaId":"aa_0","hexZoneId":"aa","name":"Full Moon Fountain"},{"areaId":"a4_0","hexZoneId":"a4","name":"Garlaige Citadel 1 [S]"},{"areaId":"c8_0","hexZoneId":"c8","name":"Garlaige Citadel 1"},{"areaId":"a4_1","hexZoneId":"a4","name":"Garlaige Citadel 2 [S]"},{"areaId":"c8_1","hexZoneId":"c8","name":"Garlaige Citadel 2"},{"areaId":"a4_2","hexZoneId":"a4","name":"Garlaige Citadel 3 [S]"},{"areaId":"c8_2","hexZoneId":"c8","name":"Garlaige Citadel 3"},{"areaId":"a4_3","hexZoneId":"a4","name":"Garlaige Citadel 4 [S]"},{"areaId":"c8_3","hexZoneId":"c8","name":"Garlaige Citadel 4"},{"areaId":"8c_0","hexZoneId":"8c","name":"Ghelsba Outpost 1"},{"areaId":"8c_1","hexZoneId":"8c","name":"Ghelsba Outpost 2"},{"areaId":"81_0","hexZoneId":"81","name":"Ghoyus Reverie 1"},{"areaId":"81_9","hexZoneId":"81","name":"Ghoyus Reverie 10"},{"areaId":"81_10","hexZoneId":"81","name":"Ghoyus Reverie 11"},{"areaId":"81_11","hexZoneId":"81","name":"Ghoyus Reverie 12"},{"areaId":"81_12","hexZoneId":"81","name":"Ghoyus Reverie 13"},{"areaId":"81_13","hexZoneId":"81","name":"Ghoyus Reverie 14"},{"areaId":"81_14","hexZoneId":"81","name":"Ghoyus Reverie 15"},{"areaId":"81_15","hexZoneId":"81","name":"Ghoyus Reverie 16"},{"areaId":"81_16","hexZoneId":"81","name":"Ghoyus Reverie 17"},{"areaId":"81_17","hexZoneId":"81","name":"Ghoyus Reverie 18"},{"areaId":"81_1","hexZoneId":"81","name":"Ghoyus Reverie 2"},{"areaId":"81_2","hexZoneId":"81","name":"Ghoyus Reverie 3"},{"areaId":"81_3","hexZoneId":"81","name":"Ghoyus Reverie 4"},{"areaId":"81_4","hexZoneId":"81","name":"Ghoyus Reverie 5"},{"areaId":"81_5","hexZoneId":"81","name":"Ghoyus Reverie 6"},{"areaId":"81_6","hexZoneId":"81","name":"Ghoyus Reverie 7"},{"areaId":"81_7","hexZoneId":"81","name":"Ghoyus Reverie 8"},{"areaId":"81_8","hexZoneId":"81","name":"Ghoyus Reverie 9"},{"areaId":"91_0","hexZoneId":"91","name":"Giddeus 1"},{"areaId":"91_1","hexZoneId":"91","name":"Giddeus 2"},{"areaId":"22_0","hexZoneId":"22","name":"Grand Palace of Hu'Xzoi 1"},{"areaId":"22_1","hexZoneId":"22","name":"Grand Palace of Hu'Xzoi 2"},{"areaId":"22_2","hexZoneId":"22","name":"Grand Palace of Hu'Xzoi 3"},{"areaId":"59_0","hexZoneId":"59","name":"Grauberg"},{"areaId":"c4_0","hexZoneId":"c4","name":"Gusgen Mines 1"},{"areaId":"c4_1","hexZoneId":"c4","name":"Gusgen Mines 2 a"},{"areaId":"c4_4","hexZoneId":"c4","name":"Gusgen Mines 2 b"},{"areaId":"c4_2","hexZoneId":"c4","name":"Gusgen Mines 3"},{"areaId":"c4_3","hexZoneId":"c4","name":"Gusgen Mines 4"},{"areaId":"d4_0","hexZoneId":"d4","name":"Gustav Tunnel 1"},{"areaId":"d4_1","hexZoneId":"d4","name":"Gustav Tunnel 2"},{"areaId":"fb_0","hexZoneId":"fb","name":"Hall of the Gods"},{"areaId":"0e_0","hexZoneId":"0e","name":"Hall of Transference 1"},{"areaId":"0e_1","hexZoneId":"0e","name":"Hall of Transference 2"},{"areaId":"0e_2","hexZoneId":"0e","name":"Hall of Transference 3"},{"areaId":"3e_0","hexZoneId":"3e","name":"Halvung 1"},{"areaId":"3e_1","hexZoneId":"3e","name":"Halvung 2"},{"areaId":"3e_2","hexZoneId":"3e","name":"Halvung 3"},{"areaId":"3e_3","hexZoneId":"3e","name":"Halvung 4"},{"areaId":"f2_0","hexZoneId":"f2","name":"Heavens Tower 1"},{"areaId":"f2_1","hexZoneId":"f2","name":"Heavens Tower 2"},{"areaId":"f2_2","hexZoneId":"f2","name":"Heavens Tower 3"},{"areaId":"f2_3","hexZoneId":"f2","name":"Heavens Tower 4"},{"areaId":"8b_0","hexZoneId":"8b","name":"Horlais Peak"},{"areaId":"c0_0","hexZoneId":"c0","name":"Horutoto Ruins 1"},{"areaId":"c0_1","hexZoneId":"c0","name":"Horutoto Ruins 2"},{"areaId":"c0_2","hexZoneId":"c0","name":"Horutoto Ruins 3"},{"areaId":"c0_3","hexZoneId":"c0","name":"Horutoto Ruins 4"},{"areaId":"c2_0","hexZoneId":"c2","name":"Horutoto Ruins 5"},{"areaId":"c2_1","hexZoneId":"c2","name":"Horutoto Ruins 6"},{"areaId":"c2_2","hexZoneId":"c2","name":"Horutoto Ruins 7"},{"areaId":"c2_3","hexZoneId":"c2","name":"Horutoto Ruins 8"},{"areaId":"c2_4","hexZoneId":"c2","name":"Horutoto Ruins 9 a"},{"areaId":"c2_5","hexZoneId":"c2","name":"Horutoto Ruins 9 b"},{"areaId":"cd_0","hexZoneId":"cd","name":"Ifrit's Cauldron 1"},{"areaId":"cd_1","hexZoneId":"cd","name":"Ifrit's Cauldron 2"},{"areaId":"cd_2","hexZoneId":"cd","name":"Ifrit's Cauldron 3"},{"areaId":"cd_3","hexZoneId":"cd","name":"Ifrit's Cauldron 4"},{"areaId":"cd_4","hexZoneId":"cd","name":"Ifrit's Cauldron 5"},{"areaId":"cd_5","hexZoneId":"cd","name":"Ifrit's Cauldron 6"},{"areaId":"cd_6","hexZoneId":"cd","name":"Ifrit's Cauldron 7"},{"areaId":"cd_7","hexZoneId":"cd","name":"Ifrit's Cauldron 8"},{"areaId":"37_0","hexZoneId":"37","name":"Ilrusi Atoll 1"},{"areaId":"37_9","hexZoneId":"37","name":"Ilrusi Atoll 10"},{"areaId":"37_1","hexZoneId":"37","name":"Ilrusi Atoll 2"},{"areaId":"37_2","hexZoneId":"37","name":"Ilrusi Atoll 3"},{"areaId":"37_3","hexZoneId":"37","name":"Ilrusi Atoll 4"},{"areaId":"37_4","hexZoneId":"37","name":"Ilrusi Atoll 5"},{"areaId":"37_5","hexZoneId":"37","name":"Ilrusi Atoll 6"},{"areaId":"37_6","hexZoneId":"37","name":"Ilrusi Atoll 7"},{"areaId":"37_7","hexZoneId":"37","name":"Ilrusi Atoll 8"},{"areaId":"37_8","hexZoneId":"37","name":"Ilrusi Atoll 9"},{"areaId":"43_0","hexZoneId":"43","name":"Jade Sepulcher"},{"areaId":"d7_0","hexZoneId":"d7","name":"Jeuno Residential Area"},{"areaId":"52_0","hexZoneId":"52","name":"Jugner Forest [S]"},{"areaId":"68_0","hexZoneId":"68","name":"Jugner Forest"},{"areaId":"fa_0","hexZoneId":"fa","name":"Kazham"},{"areaId":"be_0","hexZoneId":"be","name":"King Ranperre's Tomb 1"},{"areaId":"be_1","hexZoneId":"be","name":"King Ranperre's Tomb 2"},{"areaId":"0f_0","hexZoneId":"0f","name":"Konschtat Highlands [A]"},{"areaId":"6c_0","hexZoneId":"6c","name":"Konschtat Highlands"},{"areaId":"ad_0","hexZoneId":"ad","name":"Korroloka Tunnel 1"},{"areaId":"ad_1","hexZoneId":"ad","name":"Korroloka Tunnel 2"},{"areaId":"ad_2","hexZoneId":"ad","name":"Korroloka Tunnel 3"},{"areaId":"ad_3","hexZoneId":"ad","name":"Korroloka Tunnel 4"},{"areaId":"ad_4","hexZoneId":"ad","name":"Korroloka Tunnel 5"},{"areaId":"ae_0","hexZoneId":"ae","name":"Kuftal Tunnel 1"},{"areaId":"ae_1","hexZoneId":"ae","name":"Kuftal Tunnel 2"},{"areaId":"ae_2","hexZoneId":"ae","name":"Kuftal Tunnel 3"},{"areaId":"ae_3","hexZoneId":"ae","name":"Kuftal Tunnel 4"},{"areaId":"84_0","hexZoneId":"84","name":"La Theine Plateau [A]"},{"areaId":"66_0","hexZoneId":"66","name":"La Theine Plateau"},{"areaId":"d5_0","hexZoneId":"d5","name":"Labyrinth of Onzozo"},{"areaId":"b4_0","hexZoneId":"b4","name":"La'Loff Amphitheater"},{"areaId":"3f_0","hexZoneId":"3f","name":"Lebros Cavern 1"},{"areaId":"3f_9","hexZoneId":"3f","name":"Lebros Cavern 10"},{"areaId":"3f_1","hexZoneId":"3f","name":"Lebros Cavern 2"},{"areaId":"3f_2","hexZoneId":"3f","name":"Lebros Cavern 3"},{"areaId":"3f_3","hexZoneId":"3f","name":"Lebros Cavern 4"},{"areaId":"3f_4","hexZoneId":"3f","name":"Lebros Cavern 5"},{"areaId":"3f_5","hexZoneId":"3f","name":"Lebros Cavern 6"},{"areaId":"3f_6","hexZoneId":"3f","name":"Lebros Cavern 7"},{"areaId":"3f_7","hexZoneId":"3f","name":"Lebros Cavern 8"},{"areaId":"3f_8","hexZoneId":"3f","name":"Lebros Cavern 9"},{"areaId":"45_0","hexZoneId":"45","name":"Leujaoam Sanctum 1"},{"areaId":"45_9","hexZoneId":"45","name":"Leujaoam Sanctum 10"},{"areaId":"45_1","hexZoneId":"45","name":"Leujaoam Sanctum 2"},{"areaId":"45_2","hexZoneId":"45","name":"Leujaoam Sanctum 3"},{"areaId":"45_3","hexZoneId":"45","name":"Leujaoam Sanctum 4"},{"areaId":"45_4","hexZoneId":"45","name":"Leujaoam Sanctum 5"},{"areaId":"45_5","hexZoneId":"45","name":"Leujaoam Sanctum 6"},{"areaId":"45_6","hexZoneId":"45","name":"Leujaoam Sanctum 7"},{"areaId":"45_7","hexZoneId":"45","name":"Leujaoam Sanctum 8"},{"areaId":"45_8","hexZoneId":"45","name":"Leujaoam Sanctum 9"},{"areaId":"f5_0","hexZoneId":"f5","name":"Lower Jeuno"},{"areaId":"18_0","hexZoneId":"18","name":"Lufaise Meadows"},{"areaId":"41_0","hexZoneId":"41","name":"Mamook 1"},{"areaId":"41_1","hexZoneId":"41","name":"Mamook 2"},{"areaId":"41_2","hexZoneId":"41","name":"Mamook 3"},{"areaId":"42_0","hexZoneId":"42","name":"Mamool Ja Training Grounds 1"},{"areaId":"42_9","hexZoneId":"42","name":"Mamool Ja Training Grounds 10"},{"areaId":"42_1","hexZoneId":"42","name":"Mamool Ja Training Grounds 2"},{"areaId":"42_2","hexZoneId":"42","name":"Mamool Ja Training Grounds 3"},{"areaId":"42_3","hexZoneId":"42","name":"Mamool Ja Training Grounds 4"},{"areaId":"42_4","hexZoneId":"42","name":"Mamool Ja Training Grounds 5"},{"areaId":"42_5","hexZoneId":"42","name":"Mamool Ja Training Grounds 6"},{"areaId":"42_6","hexZoneId":"42","name":"Mamool Ja Training Grounds 7"},{"areaId":"42_7","hexZoneId":"42","name":"Mamool Ja Training Grounds 8"},{"areaId":"42_8","hexZoneId":"42","name":"Mamool Ja Training Grounds 9"},{"areaId":"03_0","hexZoneId":"03","name":"Manaclipper"},{"areaId":"c6_0","hexZoneId":"c6","name":"Maze of Shakhrami 1"},{"areaId":"c6_1","hexZoneId":"c6","name":"Maze of Shakhrami 2"},{"areaId":"c6_2","hexZoneId":"c6","name":"Maze of Shakhrami Unknown"},{"areaId":"61_0","hexZoneId":"61","name":"Meriphataud Mountains [S]"},{"areaId":"77_0","hexZoneId":"77","name":"Meriphataud Mountains"},{"areaId":"ed_0","hexZoneId":"ed","name":"Metalworks"},{"areaId":"f9_0","hexZoneId":"f9","name":"Mhaura"},{"areaId":"0d_0","hexZoneId":"0d","name":"Mine Shaft #2716"},{"areaId":"19_0","hexZoneId":"19","name":"Misareaux Coast"},{"areaId":"1f_0","hexZoneId":"1f","name":"Monarch Linn"},{"areaId":"96_0","hexZoneId":"96","name":"Monastic Cavern"},{"areaId":"83_0","hexZoneId":"83","name":"Mordion Gaol"},{"areaId":"3d_0","hexZoneId":"3d","name":"Mount Zhayolm"},{"areaId":"35_0","hexZoneId":"35","name":"Nashmau"},{"areaId":"0c_0","hexZoneId":"0c","name":"Newton Movalpolos"},{"areaId":"fc_0","hexZoneId":"fc","name":"Norg"},{"areaId":"58_0","hexZoneId":"58","name":"North Gustaberg [S]"},{"areaId":"6a_0","hexZoneId":"6a","name":"North Gustaberg"},{"areaId":"e7_0","hexZoneId":"e7","name":"Northern San d'Oria"},{"areaId":"4d_0","hexZoneId":"4d","name":"Nyzul Isle 1"},{"areaId":"4d_1","hexZoneId":"4d","name":"Nyzul Isle 2"},{"areaId":"4d_2","hexZoneId":"4d","name":"Nyzul Isle 3"},{"areaId":"4d_3","hexZoneId":"4d","name":"Nyzul Isle 4"},{"areaId":"4d_4","hexZoneId":"4d","name":"Nyzul Isle 5"},{"areaId":"4d_5","hexZoneId":"4d","name":"Nyzul Isle 6"},{"areaId":"4d_6","hexZoneId":"4d","name":"Nyzul Isle 7"},{"areaId":"4d_7","hexZoneId":"4d","name":"Nyzul Isle 8"},{"areaId":"0b_0","hexZoneId":"0b","name":"Oldton Movalpolos"},{"areaId":"c1_0","hexZoneId":"c1","name":"Ordelle's Caves 1 a"},{"areaId":"c1_3","hexZoneId":"c1","name":"Ordelle's Caves 1 b"},{"areaId":"c1_1","hexZoneId":"c1","name":"Ordelle's Caves 2"},{"areaId":"c1_2","hexZoneId":"c1","name":"Ordelle's Caves 3"},{"areaId":"8f_0","hexZoneId":"8f","name":"Palborough Mines 1"},{"areaId":"8f_1","hexZoneId":"8f","name":"Palborough Mines 2"},{"areaId":"8f_2","hexZoneId":"8f","name":"Palborough Mines 3"},{"areaId":"5a_0","hexZoneId":"5a","name":"Pashhow Marshlands [S]"},{"areaId":"6d_0","hexZoneId":"6d","name":"Pashhow Marshlands"},{"areaId":"38_0","hexZoneId":"38","name":"Periqia 1"},{"areaId":"38_9","hexZoneId":"38","name":"Periqia 10"},{"areaId":"38_1","hexZoneId":"38","name":"Periqia 2"},{"areaId":"38_2","hexZoneId":"38","name":"Periqia 3"},{"areaId":"38_3","hexZoneId":"38","name":"Periqia 4"},{"areaId":"38_4","hexZoneId":"38","name":"Periqia 5"},{"areaId":"38_5","hexZoneId":"38","name":"Periqia 6"},{"areaId":"38_6","hexZoneId":"38","name":"Periqia 7"},{"areaId":"38_7","hexZoneId":"38","name":"Periqia 8"},{"areaId":"38_8","hexZoneId":"38","name":"Periqia 9"},{"areaId":"01_0","hexZoneId":"01","name":"Phanauet Channel"},{"areaId":"1b_0","hexZoneId":"1b","name":"Phomiuna Aqueducts 1"},{"areaId":"1b_1","hexZoneId":"1b","name":"Phomiuna Aqueducts 2"},{"areaId":"1b_2","hexZoneId":"1b","name":"Phomiuna Aqueducts 3"},{"areaId":"ec_0","hexZoneId":"ec","name":"Port Bastok"},{"areaId":"f6_0","hexZoneId":"f6","name":"Port Jeuno"},{"areaId":"e8_0","hexZoneId":"e8","name":"Port San d'Oria"},{"areaId":"f0_0","hexZoneId":"f0","name":"Port Windurst"},{"areaId":"12_0","hexZoneId":"12","name":"Promyvion - Dem"},{"areaId":"10_0","hexZoneId":"10","name":"Promyvion - Holla"},{"areaId":"14_0","hexZoneId":"14","name":"Promyvion - Mea"},{"areaId":"16_0","hexZoneId":"16","name":"Promyvion - Vahzl"},{"areaId":"09_0","hexZoneId":"09","name":"Pso'Xja 1"},{"areaId":"09_9","hexZoneId":"09","name":"Pso'Xja 10"},{"areaId":"09_10","hexZoneId":"09","name":"Pso'Xja 11"},{"areaId":"09_11","hexZoneId":"09","name":"Pso'Xja 12"},{"areaId":"09_12","hexZoneId":"09","name":"Pso'Xja 13"},{"areaId":"09_13","hexZoneId":"09","name":"Pso'Xja 14"},{"areaId":"09_14","hexZoneId":"09","name":"Pso'Xja 15"},{"areaId":"09_15","hexZoneId":"09","name":"Pso'Xja 16"},{"areaId":"09_16","hexZoneId":"09","name":"Pso'Xja 17"},{"areaId":"09_17","hexZoneId":"09","name":"Pso'Xja 18"},{"areaId":"09_18","hexZoneId":"09","name":"Pso'Xja 19"},{"areaId":"09_1","hexZoneId":"09","name":"Pso'Xja 2"},{"areaId":"09_19","hexZoneId":"09","name":"Pso'Xja 20"},{"areaId":"09_20","hexZoneId":"09","name":"Pso'Xja 21"},{"areaId":"09_2","hexZoneId":"09","name":"Pso'Xja 3"},{"areaId":"09_3","hexZoneId":"09","name":"Pso'Xja 4"},{"areaId":"09_4","hexZoneId":"09","name":"Pso'Xja 5"},{"areaId":"09_5","hexZoneId":"09","name":"Pso'Xja 6"},{"areaId":"09_6","hexZoneId":"09","name":"Pso'Xja 7"},{"areaId":"09_7","hexZoneId":"09","name":"Pso'Xja 8"},{"areaId":"09_8","hexZoneId":"09","name":"Pso'Xja 9"},{"areaId":"04_1","hexZoneId":"04","name":"Purgonorgo Isle"},{"areaId":"ce_0","hexZoneId":"ce","name":"Qu'Bia Arena"},{"areaId":"7e_0","hexZoneId":"7e","name":"Qufim Island"},{"areaId":"d0_0","hexZoneId":"d0","name":"Quicksand Caves 1"},{"areaId":"d0_1","hexZoneId":"d0","name":"Quicksand Caves 2"},{"areaId":"d0_2","hexZoneId":"d0","name":"Quicksand Caves 3"},{"areaId":"d0_3","hexZoneId":"d0","name":"Quicksand Caves 4"},{"areaId":"d0_4","hexZoneId":"d0","name":"Quicksand Caves 5"},{"areaId":"d0_5","hexZoneId":"d0","name":"Quicksand Caves 6"},{"areaId":"d0_6","hexZoneId":"d0","name":"Quicksand Caves 7"},{"areaId":"d0_7","hexZoneId":"d0","name":"Quicksand Caves 8"},{"areaId":"94_0","hexZoneId":"94","name":"Qulun Dome"},{"areaId":"f7_0","hexZoneId":"f7","name":"Rabao"},{"areaId":"a6_0","hexZoneId":"a6","name":"Ranguemont Pass"},{"areaId":"1e_0","hexZoneId":"1e","name":"Riverne - Site #A01 a"},{"areaId":"1e_1","hexZoneId":"1e","name":"Riverne - Site #A01 b"},{"areaId":"1d_0","hexZoneId":"1d","name":"Riverne - Site #B01 a"},{"areaId":"1d_1","hexZoneId":"1d","name":"Riverne - Site #B01 b"},{"areaId":"5b_0","hexZoneId":"5b","name":"Rolanberry Fields [S]"},{"areaId":"6e_0","hexZoneId":"6e","name":"Rolanberry Fields"},{"areaId":"7a_0","hexZoneId":"7a","name":"Ro'Maeve"},{"areaId":"82_0","hexZoneId":"82","name":"Ru'Aun Gardens"},{"areaId":"f3_0","hexZoneId":"f3","name":"Ru'Lude Gardens"},{"areaId":"5d_0","hexZoneId":"5d","name":"Ruthotz Silvermines 1"},{"areaId":"5d_9","hexZoneId":"5d","name":"Ruthotz Silvermines 10"},{"areaId":"5d_10","hexZoneId":"5d","name":"Ruthotz Silvermines 11"},{"areaId":"5d_11","hexZoneId":"5d","name":"Ruthotz Silvermines 12"},{"areaId":"5d_12","hexZoneId":"5d","name":"Ruthotz Silvermines 13"},{"areaId":"5d_13","hexZoneId":"5d","name":"Ruthotz Silvermines 14"},{"areaId":"5d_14","hexZoneId":"5d","name":"Ruthotz Silvermines 15"},{"areaId":"5d_15","hexZoneId":"5d","name":"Ruthotz Silvermines 16"},{"areaId":"5d_16","hexZoneId":"5d","name":"Ruthotz Silvermines 17"},{"areaId":"5d_17","hexZoneId":"5d","name":"Ruthotz Silvermines 18"},{"areaId":"5d_1","hexZoneId":"5d","name":"Ruthotz Silvermines 2"},{"areaId":"5d_2","hexZoneId":"5d","name":"Ruthotz Silvermines 3"},{"areaId":"5d_3","hexZoneId":"5d","name":"Ruthotz Silvermines 4"},{"areaId":"5d_4","hexZoneId":"5d","name":"Ruthotz Silvermines 5"},{"areaId":"5d_5","hexZoneId":"5d","name":"Ruthotz Silvermines 6"},{"areaId":"5d_6","hexZoneId":"5d","name":"Ruthotz Silvermines 7"},{"areaId":"5d_7","hexZoneId":"5d","name":"Ruthotz Silvermines 8"},{"areaId":"5d_8","hexZoneId":"5d","name":"Ruthotz Silvermines 9"},{"areaId":"1c_0","hexZoneId":"1c","name":"Sacrarium 1"},{"areaId":"1c_1","hexZoneId":"1c","name":"Sacrarium 2"},{"areaId":"a3_0","hexZoneId":"a3","name":"Sacrificial Chamber"},{"areaId":"d8_0","hexZoneId":"d8","name":"San d'Oria Residential Area"},{"areaId":"62_0","hexZoneId":"62","name":"Sauromugue Champaign [S]"},{"areaId":"78_0","hexZoneId":"78","name":"Sauromugue Champaign"},{"areaId":"b0_0","hexZoneId":"b0","name":"Sea Serpent Grotto 1"},{"areaId":"b0_1","hexZoneId":"b0","name":"Sea Serpent Grotto 2"},{"areaId":"b0_2","hexZoneId":"b0","name":"Sea Serpent Grotto 3"},{"areaId":"b0_3","hexZoneId":"b0","name":"Sea Serpent Grotto 4"},{"areaId":"b0_4","hexZoneId":"b0","name":"Sea Serpent Grotto 5"},{"areaId":"20_0","hexZoneId":"20","name":"Sealion's Den"},{"areaId":"f8_0","hexZoneId":"f8","name":"Selbina"},{"areaId":"4c_0","hexZoneId":"4c","name":"Silver Sea Remnants 1"},{"areaId":"4c_1","hexZoneId":"4c","name":"Silver Sea Remnants 2"},{"areaId":"4c_2","hexZoneId":"4c","name":"Silver Sea Remnants 3"},{"areaId":"4c_3","hexZoneId":"4c","name":"Silver Sea Remnants 4"},{"areaId":"4c_4","hexZoneId":"4c","name":"Silver Sea Remnants 5"},{"areaId":"6b_0","hexZoneId":"6b","name":"South Gustaberg"},{"areaId":"50_0","hexZoneId":"50","name":"Southern San d'Oria [S]"},{"areaId":"e6_0","hexZoneId":"e6","name":"Southern San d'Oria"},{"areaId":"13_0","hexZoneId":"13","name":"Spire of Dem"},{"areaId":"11_0","hexZoneId":"11","name":"Spire of Holla"},{"areaId":"15_0","hexZoneId":"15","name":"Spire of Mea"},{"areaId":"17_0","hexZoneId":"17","name":"Spire of Vahzl"},{"areaId":"b3_0","hexZoneId":"b3","name":"Stellar Fulcrum"},{"areaId":"2d_0","hexZoneId":"2d","name":"Tahrongi Canyon [A]"},{"areaId":"75_0","hexZoneId":"75","name":"Tahrongi Canyon"},{"areaId":"39_0","hexZoneId":"39","name":"Talacca Cove"},{"areaId":"1a_0","hexZoneId":"1a","name":"Tavnazian Safehold 1"},{"areaId":"1a_1","hexZoneId":"1a","name":"Tavnazian Safehold 2"},{"areaId":"1a_2","hexZoneId":"1a","name":"Tavnazian Safehold 3"},{"areaId":"25_21","hexZoneId":"25","name":"Temenos-C1"},{"areaId":"25_22","hexZoneId":"25","name":"Temenos-C2"},{"areaId":"25_23","hexZoneId":"25","name":"Temenos-C3"},{"areaId":"25_24","hexZoneId":"25","name":"Temenos-C4"},{"areaId":"25_25","hexZoneId":"25","name":"Temenos-CB1"},{"areaId":"25_7","hexZoneId":"25","name":"Temenos-E1"},{"areaId":"25_8","hexZoneId":"25","name":"Temenos-E2"},{"areaId":"25_9","hexZoneId":"25","name":"Temenos-E3"},{"areaId":"25_10","hexZoneId":"25","name":"Temenos-E4"},{"areaId":"25_11","hexZoneId":"25","name":"Temenos-E5"},{"areaId":"25_12","hexZoneId":"25","name":"Temenos-E6"},{"areaId":"25_13","hexZoneId":"25","name":"Temenos-E7"},{"areaId":"25_26","hexZoneId":"25","name":"Temenos-Entrance"},{"areaId":"25_0","hexZoneId":"25","name":"Temenos-N1"},{"areaId":"25_1","hexZoneId":"25","name":"Temenos-N2"},{"areaId":"25_2","hexZoneId":"25","name":"Temenos-N3"},{"areaId":"25_3","hexZoneId":"25","name":"Temenos-N4"},{"areaId":"25_4","hexZoneId":"25","name":"Temenos-N5"},{"areaId":"25_5","hexZoneId":"25","name":"Temenos-N6"},{"areaId":"25_6","hexZoneId":"25","name":"Temenos-N7"},{"areaId":"25_14","hexZoneId":"25","name":"Temenos-W1"},{"areaId":"25_15","hexZoneId":"25","name":"Temenos-W2"},{"areaId":"25_16","hexZoneId":"25","name":"Temenos-W3"},{"areaId":"25_17","hexZoneId":"25","name":"Temenos-W4"},{"areaId":"25_18","hexZoneId":"25","name":"Temenos-W5"},{"areaId":"25_19","hexZoneId":"25","name":"Temenos-W6"},{"areaId":"25_20","hexZoneId":"25","name":"Temenos-W7"},{"areaId":"9f_0","hexZoneId":"9f","name":"Temple of Uggalepih 1"},{"areaId":"9f_1","hexZoneId":"9f","name":"Temple of Uggalepih 2"},{"areaId":"9f_2","hexZoneId":"9f","name":"Temple of Uggalepih 3"},{"areaId":"9f_3","hexZoneId":"9f","name":"Temple of Uggalepih 4"},{"areaId":"99_0","hexZoneId":"99","name":"The Boyahda Tree 1"},{"areaId":"99_1","hexZoneId":"99","name":"The Boyahda Tree 2"},{"areaId":"99_2","hexZoneId":"99","name":"The Boyahda Tree 3"},{"areaId":"99_3","hexZoneId":"99","name":"The Boyahda Tree 4"},{"areaId":"b5_0","hexZoneId":"b5","name":"The Celestial Nexus"},{"areaId":"47_0","hexZoneId":"47","name":"The Colosseum 1"},{"areaId":"47_1","hexZoneId":"47","name":"The Colosseum 2"},{"areaId":"c3_0","hexZoneId":"c3","name":"The Eldieme Necropolis 1"},{"areaId":"c3_1","hexZoneId":"c3","name":"The Eldieme Necropolis 2"},{"areaId":"c3_2","hexZoneId":"c3","name":"The Eldieme Necropolis 3"},{"areaId":"23_0","hexZoneId":"23","name":"The Garden of Ru'Hmet 1"},{"areaId":"23_1","hexZoneId":"23","name":"The Garden of Ru'Hmet 2"},{"areaId":"23_2","hexZoneId":"23","name":"The Garden of Ru'Hmet 3"},{"areaId":"23_3","hexZoneId":"23","name":"The Garden of Ru'Hmet 4"},{"areaId":"b7_0","hexZoneId":"b7","name":"The Last Stand"},{"areaId":"79_0","hexZoneId":"79","name":"The Sanctuary of Zi'Tah"},{"areaId":"b2_0","hexZoneId":"b2","name":"The Shrine of Ru'Avitau 1"},{"areaId":"b2_1","hexZoneId":"b2","name":"The Shrine of Ru'Avitau 2"},{"areaId":"b2_2","hexZoneId":"b2","name":"The Shrine of Ru'Avitau 3"},{"areaId":"b2_3","hexZoneId":"b2","name":"The Shrine of Ru'Avitau 4"},{"areaId":"b2_4","hexZoneId":"b2","name":"The Shrine of Ru'Avitau 5"},{"areaId":"b2_5","hexZoneId":"b2","name":"The Shrine of Ru'Avitau 6"},{"areaId":"0a_0","hexZoneId":"0a","name":"The Shrouded Maw"},{"areaId":"a5_0","hexZoneId":"a5","name":"Throne Room"},{"areaId":"a9_0","hexZoneId":"a9","name":"Toraimarai Canal 1"},{"areaId":"a9_1","hexZoneId":"a9","name":"Toraimarai Canal 2"},{"areaId":"05_0","hexZoneId":"05","name":"Uleguerand Range"},{"areaId":"f4_0","hexZoneId":"f4","name":"Upper Jeuno"},{"areaId":"67_0","hexZoneId":"67","name":"Valkurm Dunes"},{"areaId":"80_0","hexZoneId":"80","name":"Valley of Sorrows"},{"areaId":"b1_0","hexZoneId":"b1","name":"Ve'Lugannon Palace 1"},{"areaId":"b1_1","hexZoneId":"b1","name":"Ve'Lugannon Palace 2"},{"areaId":"b1_2","hexZoneId":"b1","name":"Ve'Lugannon Palace 3"},{"areaId":"b1_3","hexZoneId":"b1","name":"Ve'Lugannon Palace 4"},{"areaId":"b1_4","hexZoneId":"b1","name":"Ve'Lugannon Palace 5"},{"areaId":"b1_5","hexZoneId":"b1","name":"Ve'Lugannon Palace 6"},{"areaId":"b1_6","hexZoneId":"b1","name":"Ve'Lugannon Palace 7"},{"areaId":"b1_7","hexZoneId":"b1","name":"Ve'Lugannon Palace 8"},{"areaId":"b1_8","hexZoneId":"b1","name":"Ve'Lugannon Palace 9"},{"areaId":"53_0","hexZoneId":"53","name":"Vunkerl Inlet"},{"areaId":"33_0","hexZoneId":"33","name":"Wajaom Woodlands"},{"areaId":"b6_0","hexZoneId":"b6","name":"Walk of Echoes"},{"areaId":"90_0","hexZoneId":"90","name":"Waughroon Shrine"},{"areaId":"64_0","hexZoneId":"64","name":"West Ronfaure"},{"areaId":"73_0","hexZoneId":"73","name":"West Sarutabaruta"},{"areaId":"5f_0","hexZoneId":"5f","name":"West Sarutaburuta [S]"},{"areaId":"7d_0","hexZoneId":"7d","name":"Western Altepa Desert"},{"areaId":"da_0","hexZoneId":"da","name":"Windurst Residential Area"},{"areaId":"ef_0","hexZoneId":"ef","name":"Windurst Walls"},{"areaId":"5e_0","hexZoneId":"5e","name":"Windurst Waters 1 [S]"},{"areaId":"ee_0","hexZoneId":"ee","name":"Windurst Waters 1"},{"areaId":"5e_1","hexZoneId":"5e","name":"Windurst Waters 2 [S]"},{"areaId":"ee_1","hexZoneId":"ee","name":"Windurst Waters 2"},{"areaId":"f1_0","hexZoneId":"f1","name":"Windurst Woods"},{"areaId":"89_0","hexZoneId":"89","name":"Xarcabard [S]"},{"areaId":"70_0","hexZoneId":"70","name":"Xarcabard"},{"areaId":"7c_0","hexZoneId":"7c","name":"Yhoator Jungle"},{"areaId":"8e_0","hexZoneId":"8e","name":"Yughott Grotto 1"},{"areaId":"8e_1","hexZoneId":"8e","name":"Yughott Grotto 2"},{"areaId":"7b_0","hexZoneId":"7b","name":"Yuhtunga Jungle"},{"areaId":"ac_0","hexZoneId":"ac","name":"Zeruhn Mines"},{"areaId":"49_0","hexZoneId":"49","name":"Zhayolm Remnants 1"},{"areaId":"49_1","hexZoneId":"49","name":"Zhayolm Remnants 2"},{"areaId":"49_2","hexZoneId":"49","name":"Zhayolm Remnants 3"},{"areaId":"49_3","hexZoneId":"49","name":"Zhayolm Remnants 4"},{"areaId":"49_4","hexZoneId":"49","name":"Zhayolm Remnants 5"},{"areaId":"49_5","hexZoneId":"49","name":"Zhayolm Remnants 6"},{"areaId":"49_6","hexZoneId":"49","name":"Zhayolm Remnants 7"}];
+        
+        zonesData.sort((a, b) => {
+            const boundsA = mapData.maps[a.areaId];
+            const boundsB = mapData.maps[b.areaId];
+            const hasMapA = boundsA && boundsA.ext;
+            const hasMapB = boundsB && boundsB.ext;
+            
+            const isSA = a.name.includes('[S]');
+            const isSB = b.name.includes('[S]');
+
+            if (hasMapA && !hasMapB) return -1;
+            if (!hasMapA && hasMapB) return 1;
+
+            if (!isSA && isSB) return -1;
+            if (isSA && !isSB) return 1;
+
+            return a.name.localeCompare(b.name);
+        });
+
+
+        const zoneSearch = document.getElementById('zoneSearch');
+        const clearZoneSearchBtn = document.getElementById('clearZoneSearchBtn');
+        const zoneFilterContainer = document.getElementById('zoneFilterContainer');
+        const openMatchingTabsBtn = document.getElementById('openMatchingTabsBtn');
+        const closeAllTabsBtn = document.getElementById('closeAllTabsBtn');
+
+        const mobSearch = document.getElementById('mobSearch');
+        const clearSearchBtn = document.getElementById('clearSearchBtn');
+        const mobFilterContainer = document.getElementById('mobFilterContainer');
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const selectNoneBtn = document.getElementById('selectNoneBtn');
+
+        const mapTabBar = document.getElementById('mapTabBar');
+        const zoomSlider = document.getElementById('zoomSlider');
+        const mapImage = document.getElementById('mapImage');
+        const spawnCanvas = document.getElementById('spawnCanvas');
+        const ctx = spawnCanvas.getContext('2d');
+        const mapContainer = document.getElementById('mapContainer');
+        const scrollContainer = document.getElementById('scrollContainer');
+        const legendContainer = document.getElementById('legendContainer');
+        const legendItems = document.getElementById('legendItems');
+        const tooltip = document.getElementById('tooltip');
+        const stats = document.getElementById('stats');
+
+        let openTabs = []; // Array of areaIds
+        let activeZoneId = null; // Currently active areaId
+
+        let currentSpawns = [];
+        let baseViewportSize = 512;
+        let flashingMobs = new Map();
+        let hoveredLegendMobName = null;
+        let animationFrameId = null;
+        
+        let isDragging = false;
+        let hasDragged = false;
+        let startX, startY, scrollLeft, scrollTop;
+        let tooltipFrozen = false;
+        let lastRightClickTime = 0;
+
+        function stringToColor(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = Math.abs(hash % 360);
+            return `hsl(${hue}, 80%, 60%)`;
+        }
+
+        // Pre-build zone search index filtered by submap Y-bounds (areaId -> set of lowercase mob names & drop names)
+        const zoneSearchIndex = new Map();
+        zonesData.forEach(z => {
+            const spawns = mapData.spawns[z.hexZoneId] || [];
+            const bounds = mapData.maps[z.areaId];
+            const searchTerms = new Set();
+            
+            spawns.forEach(s => {
+                if (bounds) {
+                    if (bounds.boxes && bounds.boxes.length > 0) {
+                        const inBox = bounds.boxes.some(b => 
+                            s.x >= b.minX && s.x <= b.maxX &&
+                            s.y >= b.minY && s.y <= b.maxY &&
+                            s.z >= b.minZ && s.z <= b.maxZ
+                        );
+                        if (!inBox) return;
+                    } else if (s.y < bounds.minY || s.y > bounds.maxY) {
+                        return;
+                    }
+                }
+                
+                searchTerms.add(s.name.toLowerCase());
+                if (s.drops) {
+                    s.drops.forEach(d => searchTerms.add(d.name.toLowerCase()));
+                }
+            });
+            zoneSearchIndex.set(z.areaId, searchTerms);
+        });
+
+        function populateZoneList() {
+            const zQuery = zoneSearch.value.toLowerCase().trim();
+            const mQueryRaw = mobSearch.value.trim();
+            const mQueryExactMatch = mQueryRaw.startsWith('"') && mQueryRaw.endsWith('"') && mQueryRaw.length > 1;
+            const mQuery = mQueryExactMatch ? mQueryRaw.slice(1, -1).toLowerCase() : mQueryRaw.toLowerCase();
+
+            zoneFilterContainer.innerHTML = '';
+            let visibleCount = 0;
+
+            zonesData.forEach(z => {
+                let matchesZoneSearch = !zQuery || z.name.toLowerCase().includes(zQuery);
+                
+                let matchesMobSearch = true;
+                let matchCount = 0;
+                if (mQuery) {
+                    matchesMobSearch = false;
+                    const terms = zoneSearchIndex.get(z.areaId);
+                    if (terms) {
+                        for (const term of terms) {
+                            if (mQueryExactMatch ? term === mQuery : term.includes(mQuery)) {
+                                matchesMobSearch = true;
+                                matchCount++;
+                            }
+                        }
+                    }
+                }
+
+                const isVisible = matchesZoneSearch && matchesMobSearch;
+                if (!isVisible) return;
+                visibleCount++;
+
+                const bounds = mapData.maps[z.areaId];
+                const hasMap = bounds && bounds.ext;
+                
+                const label = document.createElement('label');
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = z.areaId;
+                cb.checked = openTabs.includes(z.areaId);
+                
+                if (!hasMap) {
+                    cb.disabled = true;
+                }
+
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        openTab(z.areaId);
+                    } else {
+                        closeTab(z.areaId);
+                    }
+                });
+
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(z.name + (hasMap ? '' : ' (No Map)')));
+
+                if (mQuery && matchCount > 0) {
+                    const badge = document.createElement('span');
+                    badge.style.fontSize = '12px';
+                    badge.style.color = '#57a1f8';
+                    badge.style.marginLeft = 'auto';
+                    badge.textContent = `(${matchCount} ${matchCount === 1 ? 'match' : 'matches'})`;
+                    label.appendChild(badge);
+                }
+
+                zoneFilterContainer.appendChild(label);
+            });
+
+            clearZoneSearchBtn.style.display = zQuery ? 'inline' : 'none';
+
+            if (mQuery || zQuery) {
+                openMatchingTabsBtn.textContent = `Open Matching (${visibleCount})`;
+            } else {
+                openMatchingTabsBtn.textContent = 'Open Matching Tabs';
+            }
+        }
+
+        zoneSearch.addEventListener('input', populateZoneList);
+        clearZoneSearchBtn.addEventListener('click', () => {
+            zoneSearch.value = '';
+            populateZoneList();
+        });
+
+
+
+        openMatchingTabsBtn.addEventListener('click', () => {
+            const cbs = zoneFilterContainer.querySelectorAll('input[type="checkbox"]');
+            const isQueryS = (zoneSearch.value && zoneSearch.value.toLowerCase().includes('[s]')) || 
+                             (mobSearch.value && mobSearch.value.toLowerCase().includes('[s]'));
+            let openedAny = false;
+            cbs.forEach(cb => {
+                const zObj = zonesData.find(z => z.areaId === cb.value);
+                if (zObj && !isQueryS && zObj.name.includes('[S]')) return;
+                if (!cb.checked && cb.style.display !== 'none' && !cb.disabled) {
+                    cb.checked = true;
+                    if (!openTabs.includes(cb.value)) {
+                        openTabs.push(cb.value);
+                        openedAny = true;
+                    }
+                }
+            });
+            if (openTabs.length > 0) {
+                if (openedAny || !activeZoneId) {
+                    activeZoneId = openTabs[openTabs.length - 1];
+                }
+                renderTabBar();
+                updateMobFilterContainer();
+                loadMap(activeZoneId);
+            }
+        });
+
+        closeAllTabsBtn.addEventListener('click', () => {
+            openTabs = [];
+            activeZoneId = null;
+            checkedMobs.clear();
+            renderTabBar();
+            populateZoneList();
+            updateMobFilterContainer();
+            clearMapDisplay();
+        });
+
+        function openTab(areaId) {
+            if (!openTabs.includes(areaId)) {
+                openTabs.push(areaId);
+            }
+            activeZoneId = areaId;
+            renderTabBar();
+            populateZoneList();
+            updateMobFilterContainer();
+            loadMap(activeZoneId);
+        }
+
+        function closeTab(areaId) {
+            const index = openTabs.indexOf(areaId);
+            openTabs = openTabs.filter(id => id !== areaId);
+            if (activeZoneId === areaId) {
+                if (openTabs.length > 0) {
+                    const newIndex = Math.max(0, index - 1);
+                    activeZoneId = openTabs[newIndex];
+                } else {
+                    activeZoneId = null;
+                }
+            }
+            if (openTabs.length === 0) {
+                checkedMobs.clear();
+            } else {
+                for (const mob of checkedMobs) {
+                    if (!openTabs.some(id => isMobInArea(mob, id))) {
+                        checkedMobs.delete(mob);
+                    }
+                }
+            }
+            renderTabBar();
+            populateZoneList();
+            updateMobFilterContainer();
+            if (activeZoneId) {
+                loadMap(activeZoneId);
+            } else {
+                clearMapDisplay();
+            }
+        }
+
+        const closeAllTabBarPill = document.getElementById('closeAllTabBarPill');
+
+        closeAllTabBarPill.addEventListener('click', () => {
+            openTabs = [];
+            activeZoneId = null;
+            checkedMobs.clear();
+            renderTabBar();
+            populateZoneList();
+            updateMobFilterContainer();
+            clearMapDisplay();
+        });
+        closeAllTabBarPill.addEventListener('mouseover', () => { closeAllTabBarPill.style.background = '#6b1d1d'; closeAllTabBarPill.style.color = '#ffffff'; });
+        closeAllTabBarPill.addEventListener('mouseout', () => { closeAllTabBarPill.style.background = '#4a1515'; closeAllTabBarPill.style.color = '#ff9999'; });
+
+        function renderTabBar() {
+            mapTabBar.innerHTML = '';
+            if (openTabs.length === 0) {
+                mapTabBar.style.display = 'none';
+                closeAllTabBarPill.style.display = 'none';
+                return;
+            }
+            mapTabBar.style.display = 'flex';
+            closeAllTabBarPill.style.display = 'flex';
+
+            openTabs.forEach(areaId => {
+                const zObj = zonesData.find(z => z.areaId === areaId);
+                const zName = zObj ? zObj.name : areaId;
+
+                const tab = document.createElement('div');
+                tab.className = 'tab-pill' + (areaId === activeZoneId ? ' active' : '');
+                
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = zName;
+                tab.appendChild(titleSpan);
+
+                const closeSpan = document.createElement('span');
+                closeSpan.className = 'tab-close';
+                closeSpan.innerHTML = '&#10006;';
+                closeSpan.title = 'Close ' + zName + ' tab';
+                closeSpan.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeTab(areaId);
+                });
+                tab.appendChild(closeSpan);
+
+                tab.addEventListener('click', () => {
+                    if (activeZoneId !== areaId) {
+                        activeZoneId = areaId;
+                        renderTabBar();
+                        loadMap(activeZoneId);
+                    }
+                });
+
+                mapTabBar.appendChild(tab);
+            });
+        }
+
+        function clearMapDisplay() {
+            ctx.clearRect(0, 0, spawnCanvas.width, spawnCanvas.height);
+            mapImage.src = '';
+            mapImage.alt = 'Select a zone to view map';
+            legendItems.innerHTML = '<span style="color: #888; font-size: 14px;">No zone open.</span>';
+            stats.textContent = 'No active map tab.';
+        }
+
+        let checkedMobs = new Set(); // Mobs explicitly checked by user
+
+        function isMobInArea(mobName, areaId) {
+            const hexId = areaId.split('_')[0];
+            const bounds = mapData.maps[areaId];
+            const spawns = mapData.spawns[hexId] || [];
+            return spawns.some(s => {
+                if (s.name !== mobName) return false;
+                if (bounds) {
+                    if (bounds.boxes && bounds.boxes.length > 0) {
+                        return bounds.boxes.some(b => 
+                            s.x >= b.minX && s.x <= b.maxX &&
+                            s.y >= b.minY && s.y <= b.maxY &&
+                            s.z >= b.minZ && s.z <= b.maxZ
+                        );
+                    }
+                    return s.y >= bounds.minY && s.y <= bounds.maxY;
+                }
+                return true;
+            });
+        }
+
+        function getMatchingZonesForMob(mobName, mQuery, mQueryExactMatch) {
+            const matchingAreaIds = [];
+            zonesData.forEach(z => {
+                const hexId = z.hexZoneId;
+                const spawns = mapData.spawns[hexId] || [];
+                const bounds = mapData.maps[z.areaId];
+                
+                if (!bounds || !bounds.ext) return;
+
+                const hasSpawn = spawns.some(s => {
+                    if (s.name !== mobName) return false;
+                    
+                    if (bounds.boxes && bounds.boxes.length > 0) {
+                        const inBox = bounds.boxes.some(b => 
+                            s.x >= b.minX && s.x <= b.maxX &&
+                            s.y >= b.minY && s.y <= b.maxY &&
+                            s.z >= b.minZ && s.z <= b.maxZ
+                        );
+                        if (!inBox) return false;
+                    } else if (s.y < bounds.minY || s.y > bounds.maxY) {
+                        return false;
+                    }
+
+                    if (mQuery && mQuery.length > 0) {
+                        let mobNameMatch = false;
+                        let dropMatch = false;
+                        if (mQueryExactMatch) {
+                            mobNameMatch = s.name.toLowerCase() === mQuery;
+                            dropMatch = s.drops && s.drops.some(d => d.name.toLowerCase() === mQuery);
+                        } else {
+                            mobNameMatch = s.name.toLowerCase().includes(mQuery);
+                            dropMatch = s.drops && s.drops.some(d => d.name.toLowerCase().includes(mQuery));
+                        }
+                        if (!mobNameMatch && !dropMatch) {
+                            return false;
+                        }
+                    }
+                    
+                    return true;
+                });
+                if (hasSpawn) {
+                    matchingAreaIds.push(z.areaId);
+                }
+            });
+
+            const isQueryS = (mQuery && mQuery.includes('[s]')) || (zoneSearch.value && zoneSearch.value.toLowerCase().includes('[s]'));
+            if (!isQueryS) {
+                const nonSMatches = matchingAreaIds.filter(id => {
+                    const zObj = zonesData.find(z => z.areaId === id);
+                    return zObj && !zObj.name.includes('[S]');
+                });
+                if (nonSMatches.length > 0) {
+                    return nonSMatches;
+                }
+            }
+
+            return matchingAreaIds;
+        }
+
+        function updateMobFilterContainer() {
+            const mQueryRaw = mobSearch.value.trim();
+            const mQueryExactMatch = mQueryRaw.startsWith('"') && mQueryRaw.endsWith('"') && mQueryRaw.length > 1;
+            const mQuery = mQueryExactMatch ? mQueryRaw.slice(1, -1).toLowerCase() : mQueryRaw.toLowerCase();
+            const mobDropsMap = new Map();
+            const mobZonesMap = new Map();
+            const allSpawns = [];
+
+            let candidateAreaIds = [];
+            if (mQuery.length > 0) {
+                const isQueryS = mQuery.includes('[s]') || (zoneSearch.value && zoneSearch.value.toLowerCase().includes('[s]'));
+                candidateAreaIds = zonesData
+                    .filter(z => isQueryS || !z.name.includes('[S]'))
+                    .map(z => z.areaId);
+            } else if (openTabs.length > 0) {
+                candidateAreaIds = openTabs;
+            } else {
+                mobFilterContainer.innerHTML = '<div style="color:#888; font-size:13px; padding:6px 0;">Select a zone or search for a mob/item drop above.</div>';
+                return;
+            }
+
+            candidateAreaIds.forEach(areaId => {
+                const hexId = areaId.split('_')[0];
+                const bounds = mapData.maps[areaId];
+                const spawns = mapData.spawns[hexId] || [];
+                spawns.forEach(s => {
+                    if (bounds) {
+                        if (bounds.boxes && bounds.boxes.length > 0) {
+                            const inBox = bounds.boxes.some(b => 
+                                s.x >= b.minX && s.x <= b.maxX &&
+                                s.y >= b.minY && s.y <= b.maxY &&
+                                s.z >= b.minZ && s.z <= b.maxZ
+                            );
+                            if (!inBox) return;
+                        } else if (s.y < bounds.minY || s.y > bounds.maxY) {
+                            return;
+                        }
+                    }
+
+                    if (mQuery.length > 0) {
+                        let mobNameMatch = false;
+                        let dropMatch = false;
+                        if (mQueryExactMatch) {
+                            mobNameMatch = s.name.toLowerCase() === mQuery;
+                            dropMatch = s.drops && s.drops.some(d => d.name.toLowerCase() === mQuery);
+                        } else {
+                            mobNameMatch = s.name.toLowerCase().includes(mQuery);
+                            dropMatch = s.drops && s.drops.some(d => d.name.toLowerCase().includes(mQuery));
+                        }
+                        if (!mobNameMatch && !dropMatch) {
+                            return;
+                        }
+                    }
+
+                    allSpawns.push(s);
+                    if (!mobZonesMap.has(s.name)) mobZonesMap.set(s.name, new Set());
+                    mobZonesMap.get(s.name).add(areaId);
+
+                    if (s.drops && s.drops.length > 0) {
+                        if (!mobDropsMap.has(s.name)) mobDropsMap.set(s.name, new Set());
+                        s.drops.forEach(d => mobDropsMap.get(s.name).add(d.name.toLowerCase()));
+                    }
+                });
+            });
+
+            const uniqueMobs = [...new Set(allSpawns.map(s => s.name))].sort();
+
+            if (typeof hideMobSummaryTooltip === 'function') hideMobSummaryTooltip();
+            mobFilterContainer.innerHTML = '';
+            if (uniqueMobs.length === 0) {
+                if (openTabs.length === 0 && mQuery.length === 0) {
+                    mobFilterContainer.innerHTML = '<div style="color:#888; font-size:13px; padding:6px 0;">Select a zone or search for a mob/item drop above.</div>';
+                } else {
+                    mobFilterContainer.innerHTML = '<div style="color:#888; font-size:13px; padding:6px 0;">No matching mobs found.</div>';
+                }
+                return;
+            }
+
+            uniqueMobs.forEach(mob => {
+                const cleanName = mob.replace(/_/g, ' ');
+                const label = document.createElement('label');
+                
+                const dropsSet = mobDropsMap.get(mob);
+                if (dropsSet) {
+                    label.dataset.drops = Array.from(dropsSet).join(',');
+                }
+                
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = mob;
+                cb.checked = checkedMobs.has(mob);
+
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        checkedMobs.add(mob);
+                        const matchingAreaIds = getMatchingZonesForMob(mob, mQuery, mQueryExactMatch);
+                        let newlyOpened = false;
+                        matchingAreaIds.forEach(id => {
+                            if (!openTabs.includes(id)) {
+                                openTabs.push(id);
+                                newlyOpened = true;
+                            }
+                        });
+                        if (newlyOpened) {
+                            if (!activeZoneId || !matchingAreaIds.includes(activeZoneId)) {
+                                activeZoneId = matchingAreaIds[0];
+                            }
+                            renderTabBar();
+                            populateZoneList();
+                            updateMobFilterContainer();
+                            loadMap(activeZoneId);
+                            return;
+                        }
+                    } else {
+                        checkedMobs.delete(mob);
+                    }
+                    if (activeZoneId) drawSpawns(activeZoneId);
+                });
+                
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(cleanName));
+                
+                const zonesSet = mobZonesMap.get(mob);
+                let validZoneCount = 0;
+                let missingZoneNames = [];
+                if (zonesSet) {
+                    zonesSet.forEach(areaId => {
+                        const bounds = mapData.maps[areaId];
+                        const hasMap = bounds && bounds.ext;
+                        if (hasMap) {
+                            validZoneCount++;
+                        } else {
+                            const zObj = zonesData.find(z => z.areaId === areaId);
+                            missingZoneNames.push(zObj ? zObj.name : areaId);
+                        }
+                    });
+                }
+                
+                if (validZoneCount > 0) {
+                    const badge = document.createElement('span');
+                    badge.style.fontSize = '11px';
+                    badge.style.color = '#57a1f8';
+                    badge.style.marginLeft = 'auto';
+                    badge.textContent = '(' + validZoneCount + ' ' + (validZoneCount === 1 ? 'zone' : 'zones') + ')';
+                    label.appendChild(badge);
+                }
+                
+                if (missingZoneNames.length > 0) {
+                    const missingBadge = document.createElement('span');
+                    missingBadge.style.fontSize = '10px';
+                    missingBadge.style.color = '#ff9999';
+                    missingBadge.style.marginLeft = validZoneCount > 0 ? '4px' : 'auto';
+                    missingBadge.title = 'No map image available for: ' + missingZoneNames.join(', ');
+                    missingBadge.textContent = '(!)';
+                    label.appendChild(missingBadge);
+                }
+
+                const colorIndicator = document.createElement('div');
+                colorIndicator.style.width = '10px';
+                colorIndicator.style.height = '10px';
+                colorIndicator.style.borderRadius = '50%';
+                colorIndicator.style.backgroundColor = stringToColor(mob);
+                colorIndicator.style.marginLeft = (validZoneCount > 0 || missingZoneNames.length > 0) ? '6px' : 'auto';
+                label.appendChild(colorIndicator);
+
+                const primaryHexZone = activeZoneId ? activeZoneId.split('_')[0] : (zonesSet && zonesSet.size > 0 ? Array.from(zonesSet)[0].split('_')[0] : null);
+
+                label.addEventListener('mouseenter', (e) => showMobSummaryTooltip(e, mob, primaryHexZone));
+                label.addEventListener('mousemove', (e) => {
+                    if (!tooltipFrozen && tooltip.style.display === 'block') {
+                        updateTooltipPosition(e);
+                    }
+                });
+                label.addEventListener('mouseleave', hideMobSummaryTooltip);
+                
+                mobFilterContainer.appendChild(label);
+            });
+        }
+
+        mobSearch.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            if (query.length > 0) {
+                clearSearchBtn.style.display = 'inline';
+            } else {
+                clearSearchBtn.style.display = 'none';
+            }
+            
+            updateMobFilterContainer();
+            populateZoneList();
+        });
+        
+        clearSearchBtn.addEventListener('click', () => {
+            mobSearch.value = '';
+            mobSearch.dispatchEvent(new Event('input'));
+        });
+        
+        selectAllBtn.addEventListener('click', () => {
+            const labels = mobFilterContainer.querySelectorAll('label');
+            let newlyOpened = false;
+            let changed = false;
+            const mQueryRaw = mobSearch.value.trim();
+            const mQueryExactMatch = mQueryRaw.startsWith('"') && mQueryRaw.endsWith('"') && mQueryRaw.length > 1;
+            const mQuery = mQueryExactMatch ? mQueryRaw.slice(1, -1).toLowerCase() : mQueryRaw.toLowerCase();
+            
+            labels.forEach(label => {
+                if (label.style.display !== 'none') {
+                    const cb = label.querySelector('input');
+                    const mob = cb.value;
+                    if (!cb.checked) {
+                        cb.checked = true;
+                        checkedMobs.add(mob);
+                        changed = true;
+                        
+                        const matchingAreaIds = getMatchingZonesForMob(mob, mQuery, mQueryExactMatch);
+                        matchingAreaIds.forEach(id => {
+                            if (!openTabs.includes(id)) {
+                                openTabs.push(id);
+                                newlyOpened = true;
+                            }
+                        });
+                    }
+                }
+            });
+            
+            if (newlyOpened) {
+                if (!activeZoneId && openTabs.length > 0) {
+                    activeZoneId = openTabs[0];
+                }
+                renderTabBar();
+                populateZoneList();
+                updateMobFilterContainer();
+                loadMap(activeZoneId);
+            } else if (changed && activeZoneId) {
+                drawSpawns(activeZoneId);
+            }
+        });
+
+        selectNoneBtn.addEventListener('click', () => {
+            const labels = mobFilterContainer.querySelectorAll('label');
+            let changed = false;
+            labels.forEach(label => {
+                if (label.style.display !== 'none') {
+                    const cb = label.querySelector('input');
+                    const mob = cb.value;
+                    if (cb.checked) {
+                        cb.checked = false;
+                        checkedMobs.delete(mob);
+                        changed = true;
+                    }
+                }
+            });
+            if (changed && activeZoneId) drawSpawns(activeZoneId);
+        });
+
+        window.addFilter = function(mobName, hexIdsStr) {
+            mobSearch.value = '';
+            
+            if (!checkedMobs.has(mobName)) {
+                checkedMobs.add(mobName);
+            }
+            
+            renderTabBar();
+            populateZoneList();
+            updateMobFilterContainer();
+            
+            if (activeZoneId) {
+                loadMap(activeZoneId);
+                drawSpawns(activeZoneId);
+            }
+            
+            if (hexIdsStr) {
+                const hexes = hexIdsStr.split(',');
+                hexes.forEach(h => {
+                    const decimalId = parseInt(h.trim(), 16);
+                    if (!isNaN(decimalId)) {
+                        flashingMobs.set(mobName + '_' + decimalId, Date.now());
+                    }
+                });
+                if (!animationFrameId) renderLoop();
+            }
+        };
+
+        zoomSlider.addEventListener('input', applyZoom);
+
+        scrollContainer.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
+        scrollContainer.addEventListener('mousedown', (e) => {
+            if (e.button === 2) {
+                const now = Date.now();
+                if (now - lastRightClickTime < 400) {
+                    changeZoomLevels(-1.0, e);
+                    lastRightClickTime = 0;
+                } else {
+                    lastRightClickTime = now;
+                }
+            } else if (e.button === 0) {
+                isDragging = true;
+                hasDragged = false;
+                scrollContainer.style.cursor = 'grabbing';
+                startX = e.pageX - scrollContainer.offsetLeft;
+                startY = e.pageY - scrollContainer.offsetTop;
+                scrollLeft = scrollContainer.scrollLeft;
+                scrollTop = scrollContainer.scrollTop;
+            }
+        });
+        scrollContainer.addEventListener('mouseleave', () => {
+            isDragging = false;
+            scrollContainer.style.cursor = 'grab';
+        });
+        scrollContainer.addEventListener('mouseup', (e) => {
+            if (e.button === 0) {
+                isDragging = false;
+                scrollContainer.style.cursor = 'grab';
+                setTimeout(() => { hasDragged = false; }, 50);
+            }
+        });
+        scrollContainer.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            hasDragged = true;
+            e.preventDefault();
+            const x = e.pageX - scrollContainer.offsetLeft;
+            const y = e.pageY - scrollContainer.offsetTop;
+            const walkX = (x - startX);
+            const walkY = (y - startY);
+            scrollContainer.scrollLeft = scrollLeft - walkX;
+            scrollContainer.scrollTop = scrollTop - walkY;
+        });
+
+        scrollContainer.addEventListener('dblclick', (e) => {
+            if (e.button === 0) {
+                changeZoomLevels(1.0, e);
+            }
+        });
+
+        function changeZoomLevels(increment, e) {
+            const oldScale = parseFloat(zoomSlider.value);
+            let newScale = oldScale + increment;
+            
+            if (newScale > parseFloat(zoomSlider.max)) newScale = parseFloat(zoomSlider.max);
+            if (newScale < parseFloat(zoomSlider.min)) newScale = parseFloat(zoomSlider.min);
+            if (newScale === oldScale) return;
+            
+            const rect = scrollContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            const mapX = scrollContainer.scrollLeft + mouseX;
+            const mapY = scrollContainer.scrollTop + mouseY;
+            
+            zoomSlider.value = newScale;
+            applyZoom();
+            
+            const ratio = newScale / oldScale;
+            scrollContainer.scrollLeft = (mapX * ratio) - mouseX;
+            scrollContainer.scrollTop = (mapY * ratio) - mouseY;
+        }
+
+        function applyZoom() {
+            if (!mapImage.naturalWidth || !activeZoneId) return;
+            const scale = parseFloat(zoomSlider.value);
+            const newSize = baseViewportSize * scale;
+            
+            mapImage.style.width = newSize + 'px';
+            mapImage.style.height = newSize + 'px';
+            spawnCanvas.style.width = newSize + 'px';
+            spawnCanvas.style.height = newSize + 'px';
+            
+            drawSpawns(activeZoneId);
+        }
+
+        function loadMap(areaId) {
+            if (!areaId) {
+                clearMapDisplay();
+                return;
+            }
+
+            const hexZoneId = areaId.split('_')[0];
+            const bounds = mapData.maps[areaId];
+            if (bounds && bounds.ext) {
+                if (bounds.ext === 'png' && bounds.hdMapFile) {
+                    mapImage.src = 'HD_Maps/' + bounds.hdMapFile;
+                } else if (bounds.ext === 'gif') {
+                    mapImage.src = areaId + '.gif';
+                }
+            } else {
+                mapImage.src = '';
+                mapImage.alt = 'No map available';
+                ctx.clearRect(0, 0, spawnCanvas.width, spawnCanvas.height);
+                stats.textContent = 'Map image not found for this zone.';
+                return;
+            }
+            
+            ctx.clearRect(0, 0, spawnCanvas.width, spawnCanvas.height);
+            stats.textContent = 'Loading map...';
+            
+            mapImage.onload = () => {
+                spawnCanvas.width = mapImage.naturalWidth;
+                spawnCanvas.height = mapImage.naturalHeight;
+                
+                const maxDesired = mapImage.naturalWidth * 1.5;
+                const maxAvailable = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.7);
+                baseViewportSize = Math.min(maxDesired, maxAvailable);
+                
+                scrollContainer.style.width = baseViewportSize + 'px';
+                scrollContainer.style.height = baseViewportSize + 'px';
+                
+                zoomSlider.value = 1;
+                applyZoom();
+                
+                drawSpawns(areaId);
+            };
+            
+            mapImage.onerror = () => {
+                const currentSrc = mapImage.getAttribute('src');
+                if (currentSrc && !currentSrc.startsWith('../')) {
+                    mapImage.src = '../' + currentSrc;
+                    return;
+                }
+                stats.textContent = 'Map image not found: ' + (currentSrc || (areaId + '.gif'));
+            };
+        }
+
+        function drawSpawns(areaId) {
+            if (!areaId) return;
+            ctx.clearRect(0, 0, spawnCanvas.width, spawnCanvas.height);
+            currentSpawns = [];
+
+            const hexZoneId = areaId.split('_')[0];
+            const bounds = mapData.maps[areaId];
+            if (!bounds) {
+                stats.textContent = 'No map calibration bounds found for ' + areaId;
+                return;
+            }
+
+            const spawns = mapData.spawns[hexZoneId];
+            if (!spawns || spawns.length === 0) {
+                stats.textContent = 'No spawn points found for this zone.';
+                return;
+            }
+
+            let drawCount = 0;
+            
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1;
+
+            spawns.forEach(spawn => {
+                if (!checkedMobs.has(spawn.name)) {
+                    return;
+                }
+
+                if (bounds.boxes && bounds.boxes.length > 0) {
+                    const inBox = bounds.boxes.some(b => 
+                        spawn.x >= b.minX && spawn.x <= b.maxX &&
+                        spawn.y >= b.minY && spawn.y <= b.maxY &&
+                        spawn.z >= b.minZ && spawn.z <= b.maxZ
+                    );
+                    if (!inBox) return;
+                } else if (spawn.y < bounds.minY || spawn.y > bounds.maxY) {
+                    return;
+                }
+
+                const mapScaleX = spawnCanvas.width / 256;
+                const mapScaleY = spawnCanvas.height / 256;
+                
+                const pixelX = ((spawn.x * bounds.scaleX) + bounds.offsetX) * mapScaleX;
+                const pixelY = ((spawn.z * bounds.scaleZ) + bounds.offsetZ) * mapScaleY;
+
+                const localId = spawn.id & 0xFFF;
+                const specificFlash = flashingMobs.get(spawn.name + '_' + localId);
+                const generalFlash = flashingMobs.get(spawn.name);
+                const flashStart = specificFlash || generalFlash;
+                let isFlashing = false;
+                let flashProgress = 0;
+                
+                if (flashStart !== undefined) {
+                    const elapsed = Date.now() - flashStart;
+                    if (elapsed < 300) {
+                        isFlashing = true;
+                        flashProgress = 1 - (elapsed / 300);
+                    }
+                }
+
+                const currentZoom = parseFloat(zoomSlider.value);
+                let dotRadius = 15 - ((currentZoom - 1) * 3.25);
+                let flashExtra = 4;
+                let phOutlineOffset = 2;
+                let phOutlineWidth = 3;
+                
+                if (bounds && bounds.ext === 'gif') {
+                    dotRadius *= 0.2;
+                    flashExtra *= 0.3;
+                    phOutlineOffset = 0.75;
+                    phOutlineWidth = 1.2;
+                }
+                
+                if (hoveredLegendMobName && spawn.name !== hoveredLegendMobName) {
+                    ctx.globalAlpha = 0.2;
+                } else {
+                    ctx.globalAlpha = 1.0;
+                }
+
+                ctx.beginPath();
+                if (isFlashing) {
+                    const currentRadius = dotRadius + (flashExtra * flashProgress); 
+                    ctx.arc(pixelX, pixelY, currentRadius, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#ffffff';
+                } else {
+                    ctx.arc(pixelX, pixelY, dotRadius, 0, 2 * Math.PI);
+                    ctx.fillStyle = stringToColor(spawn.name);
+                }
+                ctx.fill();
+                ctx.stroke();
+
+                if (spawn.isPH) {
+                    ctx.beginPath();
+                    ctx.arc(pixelX, pixelY, dotRadius + phOutlineOffset, 0, 2 * Math.PI);
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = phOutlineWidth;
+                    ctx.stroke();
+                    ctx.lineWidth = 1;
+                }
+
+                currentSpawns.push({
+                    pixelX: pixelX,
+                    pixelY: pixelY,
+                    data: spawn
+                });
+                
+                drawCount++;
+            });
+            
+            ctx.globalAlpha = 1.0;
+
+            // Update Map Legend
+            const drawnMobNames = [...new Set(currentSpawns.map(s => s.data.name))].sort();
+            const newLegendKey = drawnMobNames.join(',');
+            
+            if (legendItems.dataset.lastKey !== newLegendKey) {
+                legendItems.dataset.lastKey = newLegendKey;
+                legendItems.innerHTML = '';
+                
+                if (drawnMobNames.length > 0) {
+                drawnMobNames.forEach(mobName => {
+                    const cleanName = mobName.replace(/_/g, ' ');
+                    const legendRow = document.createElement('div');
+                    legendRow.style.display = 'flex';
+                    legendRow.style.alignItems = 'center';
+                    legendRow.style.gap = '8px';
+                    legendRow.style.fontSize = '14px';
+                    legendRow.style.cursor = 'default';
+                    
+                    legendRow.addEventListener('mouseover', () => {
+                        hoveredLegendMobName = mobName;
+                        if (!animationFrameId) renderLoop();
+                    });
+                    legendRow.addEventListener('mouseout', () => {
+                        if (hoveredLegendMobName === mobName) {
+                            hoveredLegendMobName = null;
+                            if (!animationFrameId) renderLoop();
+                        }
+                    });
+                    
+                    const dot = document.createElement('div');
+                    dot.style.width = '12px';
+                    dot.style.height = '12px';
+                    dot.style.borderRadius = '50%';
+                    dot.style.backgroundColor = stringToColor(mobName);
+                    dot.style.border = '1px solid #000';
+                    dot.style.flexShrink = '0';
+                    
+                    const mobSpawns = currentSpawns.filter(s => s.data.name === mobName);
+                    let minL = Infinity, maxL = -Infinity;
+                    mobSpawns.forEach(s => {
+                        if (s.data.minLevel && s.data.minLevel > 0) minL = Math.min(minL, s.data.minLevel);
+                        if (s.data.maxLevel && s.data.maxLevel > 0) maxL = Math.max(maxL, s.data.maxLevel);
+                    });
+                    let lvlText = (minL !== Infinity && maxL !== -Infinity) ? (minL === maxL ? 'Lvl ' + minL : 'Lvl ' + minL + '-' + maxL) : '';
+
+                    const label = document.createElement('span');
+                    label.textContent = cleanName;
+                    label.style.overflow = 'hidden';
+                    label.style.textOverflow = 'ellipsis';
+                    label.style.whiteSpace = 'nowrap';
+
+                    let lvlBadge = null;
+                    if (lvlText) {
+                        lvlBadge = document.createElement('span');
+                        lvlBadge.style.marginLeft = 'auto';
+                        lvlBadge.style.fontSize = '11px';
+                        lvlBadge.style.color = '#aaa';
+                        lvlBadge.style.backgroundColor = '#181818';
+                        lvlBadge.style.border = '1px solid #444';
+                        lvlBadge.style.borderRadius = '3px';
+                        lvlBadge.style.padding = '1px 5px';
+                        lvlBadge.style.whiteSpace = 'nowrap';
+                        lvlBadge.style.flexShrink = '0';
+                        lvlBadge.textContent = lvlText;
+                    }
+                    
+                    const infoBtn = document.createElement('span');
+                    infoBtn.innerHTML = '&#9432;';
+                    infoBtn.title = 'Flash spawn points on map';
+                    infoBtn.style.cursor = 'pointer';
+                    infoBtn.style.color = '#888';
+                    infoBtn.style.fontSize = '16px';
+                    infoBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        flashingMobs.set(mobName, Date.now());
+                        if (!animationFrameId) {
+                            renderLoop();
+                        }
+                    });
+                    infoBtn.addEventListener('mouseover', () => { infoBtn.style.color = '#fff'; });
+                    infoBtn.addEventListener('mouseout', () => { infoBtn.style.color = '#888'; });
+                    
+                    const wikiUrlName = mobName;
+                    const externalLink = document.createElement('a');
+                    externalLink.href = 'https://ffxiclopedia.fandom.com/wiki/' + wikiUrlName;
+                    externalLink.target = '_blank';
+                    externalLink.innerHTML = '&#8599;';
+                    externalLink.title = 'View ' + cleanName + ' on FFXIclopedia';
+                    externalLink.style.textDecoration = 'none';
+                    externalLink.style.color = '#888';
+                    externalLink.style.fontSize = '15px';
+                    externalLink.style.fontWeight = 'bold';
+                    externalLink.style.padding = '0 2px';
+                    externalLink.addEventListener('mouseover', () => { externalLink.style.color = '#fff'; });
+                    externalLink.addEventListener('mouseout', () => { externalLink.style.color = '#888'; });
+
+                    const removeBtn = document.createElement('span');
+                    removeBtn.innerHTML = '&#10006;';
+                    removeBtn.title = 'Hide this mob from map';
+                    removeBtn.style.cursor = 'pointer';
+                    removeBtn.style.color = '#888';
+                    removeBtn.style.fontSize = '12px';
+                    removeBtn.style.padding = '0 2px';
+                    removeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        checkedMobs.delete(mobName);
+                        checkedMobs.add('__unselected_' + mobName);
+                        const cbs = mobFilterContainer.querySelectorAll('input[type="checkbox"]');
+                        for (const cb of cbs) {
+                            if (cb.value === mobName) {
+                                cb.checked = false;
+                                break;
+                            }
+                        }
+                        drawSpawns(activeZoneId);
+                    });
+                    removeBtn.addEventListener('mouseover', () => { removeBtn.style.color = '#ff4444'; });
+                    removeBtn.addEventListener('mouseout', () => { removeBtn.style.color = '#888'; });
+                    
+                    legendRow.appendChild(dot);
+                    legendRow.appendChild(label);
+                    if (lvlBadge) legendRow.appendChild(lvlBadge);
+                    legendRow.appendChild(infoBtn);
+                    legendRow.appendChild(externalLink);
+                    legendRow.appendChild(removeBtn);
+
+                    legendRow.addEventListener('mouseenter', (e) => showMobSummaryTooltip(e, mobName, hexZoneId));
+                    legendRow.addEventListener('mousemove', (e) => {
+                        if (!tooltipFrozen && tooltip.style.display === 'block') {
+                            updateTooltipPosition(e);
+                        }
+                    });
+                    legendRow.addEventListener('mouseleave', hideMobSummaryTooltip);
+                    legendRow.addEventListener('click', (e) => {
+                        if (e.target === infoBtn || e.target === externalLink || e.target === removeBtn) return;
+                        freezeMobSummaryTooltip(e, mobName, hexZoneId);
+                    });
+
+                    legendItems.appendChild(legendRow);
+                });
+                } else {
+                    legendItems.innerHTML = '<span style="color: #888; font-size: 14px;">No mobs selected.</span>';
+                }
+            }
+
+            const zObj = zonesData.find(z => z.areaId === areaId);
+            const zName = zObj ? zObj.name : areaId;
+            stats.textContent = `${zName}: Showing ${drawCount} spawn points.`;
+        }
+        
+        function renderLoop() {
+            let activeFlashes = 0;
+            const now = Date.now();
+            
+            for (const [mob, startTime] of flashingMobs.entries()) {
+                if (now - startTime > 300) {
+                    flashingMobs.delete(mob);
+                } else {
+                    activeFlashes++;
+                }
+            }
+            
+            if (activeZoneId) drawSpawns(activeZoneId);
+            
+            if (activeFlashes > 0) {
+                animationFrameId = requestAnimationFrame(renderLoop);
+            } else {
+                animationFrameId = null;
+            }
+        }
+
+        function showMobSummaryTooltip(e, mobName, hexZoneId) {
+            if (tooltipFrozen) return;
+            const hexId = hexZoneId || (activeZoneId ? activeZoneId.split('_')[0] : null);
+            if (!hexId) return;
+            const spawns = mapData.spawns[hexId] || [];
+            const mobSpawns = spawns.filter(s => s.name === mobName);
+            if (mobSpawns.length === 0) return;
+            
+            const repSpawn = mobSpawns.find(s => (s.drops && s.drops.length > 0) || (s.phList && s.phList.length > 0)) || mobSpawns[0];
+            let minL = Infinity, maxL = -Infinity;
+            mobSpawns.forEach(s => {
+                if (s.minLevel && s.minLevel > 0) minL = Math.min(minL, s.minLevel);
+                if (s.maxLevel && s.maxLevel > 0) maxL = Math.max(maxL, s.maxLevel);
+            });
+            if (minL !== Infinity && maxL !== -Infinity) {
+                repSpawn.minLevel = minL;
+                repSpawn.maxLevel = maxL;
+            }
+            
+            tooltip.innerHTML = renderTooltipHTML(repSpawn);
+            tooltip.classList.remove('frozen');
+            tooltip.style.border = '1px solid #444';
+            tooltip.style.boxShadow = 'none';
+            tooltip.style.pointerEvents = 'none';
+            tooltip.style.display = 'block';
+            
+            const closeBtn = tooltip.querySelector('.tooltip-close');
+            if (closeBtn) closeBtn.style.display = 'none';
+            
+            updateTooltipPosition(e);
+        }
+
+        function freezeMobSummaryTooltip(e, mobName, hexZoneId) {
+            const hexId = hexZoneId || (activeZoneId ? activeZoneId.split('_')[0] : null);
+            if (!hexId) return;
+            const spawns = mapData.spawns[hexId] || [];
+            const mobSpawns = spawns.filter(s => s.name === mobName);
+            if (mobSpawns.length === 0) return;
+            
+            const repSpawn = mobSpawns.find(s => (s.drops && s.drops.length > 0) || (s.phList && s.phList.length > 0)) || mobSpawns[0];
+            let minL = Infinity, maxL = -Infinity;
+            mobSpawns.forEach(s => {
+                if (s.minLevel && s.minLevel > 0) minL = Math.min(minL, s.minLevel);
+                if (s.maxLevel && s.maxLevel > 0) maxL = Math.max(maxL, s.maxLevel);
+            });
+            if (minL !== Infinity && maxL !== -Infinity) {
+                repSpawn.minLevel = minL;
+                repSpawn.maxLevel = maxL;
+            }
+            
+            tooltip.innerHTML = renderTooltipHTML(repSpawn);
+            tooltipFrozen = true;
+            tooltip.classList.add('frozen');
+            tooltip.style.border = '2px solid #57a1f8';
+            tooltip.style.boxShadow = '0 0 15px rgba(87, 161, 248, 0.4)';
+            tooltip.style.pointerEvents = 'auto';
+            
+            const closeBtn = tooltip.querySelector('.tooltip-close');
+            if (closeBtn) closeBtn.style.display = 'block';
+
+            updateTooltipPosition(e);
+        }
+
+        function hideMobSummaryTooltip() {
+            if (!tooltipFrozen) {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        function updateTooltipPosition(e) {
+            const padding = 15;
+            let left = e.pageX + padding;
+            let top = e.pageY + padding;
+            
+            tooltip.style.display = 'block';
+            const rect = tooltip.getBoundingClientRect();
+            
+            if (left + rect.width > window.innerWidth + window.scrollX - padding) {
+                left = e.pageX - rect.width - padding;
+            }
+            
+            if (top + rect.height > window.innerHeight + window.scrollY - padding) {
+                top = e.pageY - rect.height - padding;
+            }
+            
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+        }
+
+        window.closeFrozenTooltip = function(e) {
+            e.stopPropagation();
+            tooltipFrozen = false;
+            tooltip.classList.remove('frozen');
+            tooltip.style.border = '1px solid #444';
+            tooltip.style.boxShadow = 'none';
+            tooltip.style.pointerEvents = 'none';
+            tooltip.style.display = 'none';
+        };
+
+        function renderTooltipHTML(s) {
+            const localHexId = (s.id & 0xFFF).toString(16).toUpperCase().padStart(3, '0');
+            const phStr = s.isPH ? ' <span style="color:#ff3333;">[PH]</span>' : '';
+            let lvlText = '';
+            if (s.minLevel && s.minLevel > 0) {
+                lvlText = s.minLevel === s.maxLevel ? ('Lvl ' + s.minLevel) : ('Lvl ' + s.minLevel + '-' + s.maxLevel);
+            }
+            let html = '<div style="font-size: 14px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: flex-start; gap: 15px;">' +
+                       '<div><strong>' + s.name.replace(/_/g, ' ') + ' (' + localHexId + ')' + phStr + '</strong>' +
+                       (lvlText ? '<div style="font-size:12px; color:#ffcc66; font-weight:500; margin-top:2px;">' + lvlText + '</div>' : '') +
+                       '</div>' +
+                       '<span class="tooltip-close" onclick="closeFrozenTooltip(event)" style="display:none; cursor:pointer; color:#888; font-weight:bold; padding:0 2px;" onmouseover="this.style.color=\'#ff4444\'" onmouseout="this.style.color=\'#888\'">&#10006;</span>' +
+                       '</div>';
+            
+            if (s.phFor && s.phFor.length > 0) {
+                html += '<div style="font-size:12px; color:#f0a000; margin-bottom: 8px;"><strong>PH for:</strong> ';
+                s.phFor.forEach((nmName, index) => {
+                    if (index > 0) html += ', ';
+                    const safeName = nmName.replace(/'/g, "\\'");
+                    html += '<a href="javascript:void(0)" onclick="addFilter(\'' + safeName + '\')" style="color:#66b3ff; text-decoration:none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + nmName.replace(/_/g, ' ') + '</a>';
+                });
+                html += '</div>';
+            }
+
+            
+            if (s.drops && s.drops.length > 0) {
+                html += '<div style="margin-top: 12px; border-top: 1px solid #555; padding-top: 8px; font-size: 14px;"><strong>Drops:</strong></div>';
+                const sortedDrops = [...s.drops].sort((a, b) => parseFloat(b.rate) - parseFloat(a.rate));
+                sortedDrops.forEach(drop => {
+                    const cleanItemName = drop.name;
+                    const displayItemName = (drop.count && drop.count > 1) ? drop.name + ' (1-' + drop.count + 'x)' : drop.name;
+                    
+                    let wikiBaseName = drop.name;
+                    const ofIndex = wikiBaseName.toLowerCase().indexOf(' of ');
+                    if (ofIndex !== -1) {
+                        wikiBaseName = wikiBaseName.substring(ofIndex + 4);
+                    }
+                    const wikiUrlName = wikiBaseName.replace(/ /g, '_');
+                    
+                    const linkStr = '<a href="https://ffxiclopedia.fandom.com/wiki/' + wikiUrlName + '" target="_blank" style="text-decoration: none; color: #888; margin-left: 8px; font-size: 15px; font-weight: bold; padding: 2px 5px;" title="View ' + cleanItemName + ' on FFXIclopedia" onmouseover="this.style.color=\'#fff\'" onmouseout="this.style.color=\'#888\'">↗</a>';
+                    html += '<div style="display: flex; justify-content: space-between; align-items: center; gap: 20px; font-size: 14px; padding: 4px 0;">' +
+                        '<span style="display: flex; align-items: center;">' + displayItemName + linkStr + '</span>' +
+                        '<span style="color: #bbb;">' + drop.rate + '</span>' +
+                    '</div>';
+                });
+                html += '</div>';
+            }
+            
+            if (s.phList && s.phList.length > 0) {
+                const clickablePHs = s.phList.map(phString => {
+                    const parenIndex = phString.indexOf(' (');
+                    let filterName = phString;
+                    let hexIdsStr = '';
+                    if (parenIndex !== -1) {
+                        filterName = phString.substring(0, parenIndex).trim();
+                        hexIdsStr = phString.substring(parenIndex + 2, phString.length - 1);
+                    }
+                    return '<a href="#" onclick="event.preventDefault(); window.addFilter(\'' + filterName.replace(/'/g, "\\'") + '\', \'' + hexIdsStr + '\');" style="color: #57a1f8; text-decoration: none;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + phString + '</a>';
+                });
+                
+                html += '<div style="margin-top: 12px; border-top: 1px solid #555; padding-top: 8px; font-size: 14px;"><strong>Placeholders: </strong>' + clickablePHs.join(', ') + '</div>';
+                if (s.phRate) {
+                    html += '<div style="margin-top: 4px; font-size: 13px; color: #a8e6cf;"><strong>Spawn Chance:</strong> ' + s.phRate + '%</div>';
+                }
+                if (s.cooldown) {
+                    html += '<div style="margin-top: 4px; font-size: 13px; color: #ffd369;"><strong>Respawn Cooldown:</strong> ' + s.cooldown + '</div>';
+                }
+            } else if (s.cooldown) {
+                html += '<div style="margin-top: 12px; border-top: 1px solid #555; padding-top: 8px; font-size: 14px; color: #ffd369;"><strong>Respawn Cooldown:</strong> ' + s.cooldown + '</div>';
+            }
+            return html;
+        }
+
+        mapContainer.addEventListener('mousemove', (e) => {
+            if (tooltipFrozen) return;
+            if (hasDragged) return;
+
+            const rect = mapImage.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+
+            const scaleX = mapImage.naturalWidth / rect.width;
+            const scaleY = mapImage.naturalHeight / rect.height;
+
+            const mouseX = (e.clientX - rect.left) * scaleX;
+            const mouseY = (e.clientY - rect.top) * scaleY;
+
+            const hitRadius = 20 * (mapImage.naturalWidth / rect.width);
+            const hitRadiusSq = hitRadius * hitRadius;
+
+            let closestSpawn = null;
+            let minDistance = hitRadiusSq;
+
+            for (const spawn of currentSpawns) {
+                const dx = mouseX - spawn.pixelX;
+                const dy = mouseY - spawn.pixelY;
+                const distSq = dx*dx + dy*dy;
+                
+                if (distSq < minDistance) {
+                    minDistance = distSq;
+                    closestSpawn = spawn;
+                }
+            }
+
+            if (closestSpawn) {
+                const s = closestSpawn.data;
+                tooltip.innerHTML = renderTooltipHTML(s);
+                tooltip.classList.remove('frozen');
+                tooltip.style.border = '1px solid #444';
+                tooltip.style.boxShadow = 'none';
+                tooltip.style.pointerEvents = 'none';
+                
+                const closeBtn = tooltip.querySelector('.tooltip-close');
+                if (closeBtn) closeBtn.style.display = 'none';
+                
+                updateTooltipPosition(e);
+            } else {
+                tooltip.style.display = 'none';
+            }
+        });
+
+        mapContainer.addEventListener('mouseleave', () => {
+            if (!tooltipFrozen) {
+                tooltip.style.display = 'none';
+            }
+        });
+
+        mapContainer.addEventListener('click', (e) => {
+            if (hasDragged) return;
+
+            const rect = mapImage.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+
+            const scaleX = mapImage.naturalWidth / rect.width;
+            const scaleY = mapImage.naturalHeight / rect.height;
+
+            const mouseX = (e.clientX - rect.left) * scaleX;
+            const mouseY = (e.clientY - rect.top) * scaleY;
+
+            const hitRadius = 20 * (mapImage.naturalWidth / rect.width);
+            const hitRadiusSq = hitRadius * hitRadius;
+
+            let closestSpawn = null;
+            let minDistance = hitRadiusSq;
+
+            for (const spawn of currentSpawns) {
+                const dx = mouseX - spawn.pixelX;
+                const dy = mouseY - spawn.pixelY;
+                const distSq = dx*dx + dy*dy;
+                
+                if (distSq < minDistance) {
+                    minDistance = distSq;
+                    closestSpawn = spawn;
+                }
+            }
+
+            if (closestSpawn) {
+                const s = closestSpawn.data;
+                tooltip.innerHTML = renderTooltipHTML(s);
+                tooltipFrozen = true;
+                tooltip.classList.add('frozen');
+                tooltip.style.border = '2px solid #57a1f8';
+                tooltip.style.boxShadow = '0 0 15px rgba(87, 161, 248, 0.4)';
+                tooltip.style.pointerEvents = 'auto';
+                
+                const closeBtn = tooltip.querySelector('.tooltip-close');
+                if (closeBtn) closeBtn.style.display = 'block';
+
+                updateTooltipPosition(e);
+            } else {
+                if (tooltipFrozen) {
+                    tooltipFrozen = false;
+                    tooltip.classList.remove('frozen');
+                    tooltip.style.border = '1px solid #444';
+                    tooltip.style.boxShadow = 'none';
+                    tooltip.style.pointerEvents = 'none';
+                    tooltip.style.display = 'none';
+                }
+            }
+        });
+
+        // Initialize default view
+        populateZoneList();
+        updateMobFilterContainer();
+    </script>
+</body>
+</html>
