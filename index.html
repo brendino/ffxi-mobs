@@ -1155,28 +1155,27 @@
                     ctx.arc(pixelX, pixelY, dotRadius, 0, 2 * Math.PI);
                     ctx.fillStyle = stringToColor(spawn.name);
                 }
+                const isGif = bounds && bounds.ext === 'gif';
+
                 ctx.fill();
+
+                // Black contrast under-stroke directly on the dot edge
                 ctx.strokeStyle = '#000000';
-                ctx.lineWidth = 1;
+                ctx.lineWidth = isGif ? 2.2 : 3.5;
                 ctx.stroke();
 
-                // Outer Aggro Ring (separated from fill by inner black border)
-                const aggroRingOffset = (bounds && bounds.ext === 'gif') ? 1.2 : 2.5;
-                const aggroRingWidth = (bounds && bounds.ext === 'gif') ? 1.0 : 1.8;
-                ctx.beginPath();
-                ctx.arc(pixelX, pixelY, dotRadius + aggroRingOffset, 0, 2 * Math.PI);
+                // Connected Red/Blue aggro border directly on the dot edge
                 ctx.strokeStyle = (spawn.aggro === 1) ? '#ff3333' : '#33bbff';
-                ctx.lineWidth = aggroRingWidth;
+                ctx.lineWidth = isGif ? 1.2 : 2.0;
                 ctx.stroke();
 
                 if (spawn.isPH) {
-                    const phOffset = aggroRingOffset + ((bounds && bounds.ext === 'gif') ? 1.0 : 2.0);
+                    const phOffset = isGif ? 1.5 : 3.0;
                     ctx.beginPath();
                     ctx.arc(pixelX, pixelY, dotRadius + phOffset, 0, 2 * Math.PI);
                     ctx.strokeStyle = '#000000';
                     ctx.lineWidth = phOutlineWidth;
                     ctx.stroke();
-                    ctx.lineWidth = 1;
                 }
 
                 currentSpawns.push({
@@ -1223,14 +1222,13 @@
                     const isAggro = mobSpawns.some(s => s.data.aggro === 1);
 
                     const dot = document.createElement('div');
-                    dot.style.width = '10px';
-                    dot.style.height = '10px';
+                    dot.style.width = '12px';
+                    dot.style.height = '12px';
                     dot.style.borderRadius = '50%';
                     dot.style.backgroundColor = stringToColor(mobName);
-                    dot.style.border = '1px solid #000';
-                    dot.style.outline = isAggro ? '2px solid #ff3333' : '2px solid #33bbff';
-                    dot.style.outlineOffset = '1px';
-                    dot.style.margin = '2px';
+                    dot.style.border = isAggro ? '2px solid #ff3333' : '2px solid #33bbff';
+                    dot.style.boxShadow = '0 0 0 1px #000';
+                    dot.style.outline = 'none';
                     dot.style.flexShrink = '0';
                     
                     let minL = Infinity, maxL = -Infinity;
