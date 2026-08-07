@@ -580,8 +580,13 @@
         }
 
         function getMatchingZonesForMob(mobName, mQuery, mQueryExactMatch) {
+            const zQuery = zoneSearch.value ? zoneSearch.value.trim().toLowerCase() : '';
             const matchingAreaIds = [];
             zonesData.forEach(z => {
+                if (zQuery.length > 0 && !z.name.toLowerCase().includes(zQuery)) {
+                    return;
+                }
+
                 const hexId = z.hexZoneId;
                 const spawns = mapData.spawns[hexId] || [];
                 const bounds = mapData.maps[z.areaId];
