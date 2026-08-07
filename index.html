@@ -1155,6 +1155,7 @@
                     ctx.arc(pixelX, pixelY, dotRadius, 0, 2 * Math.PI);
                     ctx.fillStyle = stringToColor(spawn.name);
                 }
+                ctx.fill();
                 ctx.strokeStyle = (spawn.aggro === 1) ? '#ff3333' : '#33bbff';
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
