@@ -1219,7 +1219,6 @@
                     dot.style.border = isAggro ? '2px solid #ff3333' : '2px solid #33bbff';
                     dot.style.flexShrink = '0';
                     
-                    const mobSpawns = currentSpawns.filter(s => s.data.name === mobName);
                     let minL = Infinity, maxL = -Infinity;
                     mobSpawns.forEach(s => {
                         if (s.data.minLevel && s.data.minLevel > 0) minL = Math.min(minL, s.data.minLevel);
